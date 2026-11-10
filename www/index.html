@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HALOFLUX - System Telemetry</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<audio id="bgm" src="media/bgm.mp3" loop preload="auto"></audio>
+<video id="scene" src="media/scene.mp4" muted loop autoplay playsinline></video>
+<div id="scene-fade"></div>
+<div id="occluder"></div>
+<canvas id="stage"></canvas>
+
+<div id="ui">
+  <header id="topbar">
+    <div id="brand">
+      <div class="b1"><span class="dot"></span>HALOFLUX</div>
+      <div class="b2"><span id="host">--</span><span class="sep">/</span>SYSTEM TELEMETRY<span class="sep">/</span><span id="mode" class="live">LIVE</span></div>
+    </div>
+
+    <div id="kpis">
+      <div class="kpi" data-k="cpu">
+        <div class="kl">CPU</div>
+        <div class="kv"><b id="kv-cpu">0</b><i>%</i></div>
+        <div class="kbar"><span id="kb-cpu"></span></div>
+        <div class="ks" id="ks-cpu">--</div>
+      </div>
+      <div class="kpi" data-k="gpu">
+        <div class="kl">GPU</div>
+        <div class="kv"><b id="kv-gpu">0</b><i>%</i></div>
+        <div class="kbar"><span id="kb-gpu"></span></div>
+        <div class="ks" id="ks-gpu">--</div>
+      </div>
+      <div class="kpi" data-k="mem">
+        <div class="kl">MEMORY</div>
+        <div class="kv"><b id="kv-mem">0</b><i>%</i></div>
+        <div class="kbar"><span id="kb-mem"></span></div>
+        <div class="ks" id="ks-mem">--</div>
+      </div>
+      <div class="kpi" data-k="net">
+        <div class="kl">NETWORK</div>
+        <div class="kv"><b id="kv-net">0</b><i>Mb/s</i></div>
+        <div class="kbar"><span id="kb-net"></span></div>
+        <div class="ks" id="ks-net">--</div>
+      </div>
+      <div class="kpi" data-k="disk">
+        <div class="kl">STORAGE</div>
+        <div class="kv"><b id="kv-disk">0</b><i>%</i></div>
+        <div class="kbar"><span id="kb-disk"></span></div>
+        <div class="ks" id="ks-disk">--</div>
+      </div>
+    </div>
+
+    <div id="clockbox">
+      <div id="clock">--:--</div>
+      <div id="dateline">--</div>
+      <div id="uptime">UP --</div>
+      <div id="today">TODAY --</div>
+      <div id="au">AUDIO --</div>
+    </div>
+  </header>
+
+  <div id="mid"></div>
+
+  <section id="hud">
+    <div class="panel" id="p-proc">
+      <div class="p-title">PROCESS FEED<em>TOP CPU</em></div>
+      <div class="p-body" id="b-proc"></div>
+    </div>
+    <div class="panel" id="p-mem">
+      <div class="p-title">MEMORY<em>COMMIT</em></div>
+      <div class="p-body" id="b-mem"></div>
+    </div>
+    <div class="panel" id="p-gpu">
+      <div class="p-title">GPU<em id="gpu-name">--</em></div>
+      <div class="p-body" id="b-gpu"></div>
+    </div>
+    <div class="panel" id="p-net">
+      <div class="p-title">NETWORK<em>ADAPTER</em></div>
+      <div class="p-body" id="b-net"></div>
+    </div>
+    <div class="panel" id="p-vol">
+      <div class="p-title">VOLUMES<em>STORAGE</em></div>
+      <div class="p-body" id="b-vol"></div>
+    </div>
+    <div class="panel" id="p-cores">
+      <div class="p-title">CORE MATRIX<em id="core-count">--</em></div>
+      <div class="p-body" id="b-cores"></div>
+    </div>
+    <div class="panel" id="p-io">
+      <div class="p-title">I/O<em>DISK</em></div>
+      <div class="p-body" id="b-io"></div>
+    </div>
+    <div class="panel" id="p-sys">
+      <div class="p-title">SYSTEM<em>STATUS</em></div>
+      <div class="p-body" id="b-sys"></div>
+    </div>
+  </section>
+</div>
+
+<script src="engine.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

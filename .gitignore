@@ -1,0 +1,21 @@
+# build output
+bin/
+obj/
+
+# runtime data
+run/
+webview-data/
+
+# media: never commit copyrighted footage or music
+www/media/scene.mp4
+www/media/bg.jpg
+www/media/bgm.mp3
+www/media/frames/
+www/media/music/*
+!www/media/music/README.txt
+
+# local scratch
+*.user
+*.log
+patch*.py
+*.mjs
