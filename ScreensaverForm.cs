@@ -66,14 +66,14 @@ internal sealed class ScreensaverForm : Form
                 _web.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
                 _web.CoreWebView2.Settings.IsStatusBarEnabled = false;
                 _web.CoreWebView2.Settings.AreBrowserAcceleratorKeysEnabled = false;
-                _web.CoreWebView2.Navigate(_url + (url.Contains('?') ? "&" : "?") + "autoplay=1");
+                _web.CoreWebView2.Navigate(_url);   // the native player owns the audio, not the page
 
                 _music.Start();
                 Native.SetThreadExecutionState(StayAwake);
 
                 // ignore the first moment: the mouse usually twitches while the window appears
                 _origin = Cursor.Position;
-                _watch = new System.Windows.Forms.Timer { Interval = 120 };
+                _watch = new System.Windows.Forms.Timer { Interval = 40 };
                 _watch.Tick += (_, _) =>
                 {
                     if (!_armed) { _armed = true; _origin = Cursor.Position; return; }
@@ -97,10 +97,23 @@ internal sealed class ScreensaverForm : Form
         };
 
         MouseDown += (_, _) => Quit();
-        KeyDown += (_, _) => Quit();
     }
 
-    private static bool Pressed(int vk) => (Native.GetAsyncKeyState(vk) & 0x8000) != 0;
+    private readonly HashSet<int> _held = new();
+
+    private static bool Down(int vk) => (Native.GetAsyncKeyState(vk) & 0x8000) != 0;
+
+    /// <summary>True exactly once per physical press, however long the key is held.</summary>
+    private bool JustPressed(int vk)
+    {
+        bool down = Down(vk);
+        bool was = _held.Contains(vk);
+
+        if (down && !was) { _held.Add(vk); return true; }
+        if (!down && was) _held.Remove(vk);
+
+        return false;
+    }
 
     private void ShowOsd()
     {
@@ -124,22 +137,18 @@ internal sealed class ScreensaverForm : Form
         var p = Cursor.Position;
         if (Math.Abs(p.X - _origin.X) > 10 || Math.Abs(p.Y - _origin.Y) > 10) return true;
 
-        // any mouse button or a spread of keys ends the saver, even if the web view has focus
-        if ((Native.GetAsyncKeyState(0x01) & 0x8000) != 0) return true;   // left
-        if ((Native.GetAsyncKeyState(0x02) & 0x8000) != 0) return true;   // right
-        if ((Native.GetAsyncKeyState(0x04) & 0x8000) != 0) return true;   // middle
+        if (Down(0x01) || Down(0x02) || Down(0x04)) return true;   // any mouse button
 
-        // arrows and space drive the player, everything else dismisses the saver
-        if (Pressed(0x25)) { _music.Previous(); ShowOsd(); return false; }   // left
-        if (Pressed(0x27)) { _music.Next(); ShowOsd(); return false; }       // right
-        if (Pressed(0x20)) { _music.Toggle(); ShowOsd(); return false; }     // space
-        if (Pressed(0x4D)) { _music.CycleMode(); ShowOsd(); return false; }   // m
+        // the media keys drive the player instead of dismissing it
+        if (JustPressed(0x20)) { _music.Toggle(); ShowOsd(); return false; }      // space
+        if (JustPressed(0x27)) { _music.Next(); ShowOsd(); return false; }         // right
+        if (JustPressed(0x25)) { _music.Previous(); ShowOsd(); return false; }     // left
+        if (JustPressed(0x4D)) { _music.CycleMode(); ShowOsd(); return false; }    // m
 
         for (int vk = 0x08; vk <= 0xFE; vk++)
         {
             if (vk is 0x25 or 0x27 or 0x20 or 0x4D) continue;
-            if (vk is >= 0x0A and <= 0x0C) continue;
-            if (Pressed(vk)) return true;
+            if (JustPressed(vk)) return true;
         }
 
         return false;
