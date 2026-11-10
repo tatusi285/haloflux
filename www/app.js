@@ -174,7 +174,7 @@
     const net = s.net || {};
     const io = s.io || {};
 
-    $('host').textContent = (s.host || DASH).toUpperCase();
+    $('host').textContent = 'HALOFLUX';
 
     kpi('cpu', (cpu.total || 0).toFixed(0), cpu.total,
       `${cpu.coreCount || 16} CORES / ${cpu.mhz || 0} MHZ`);
@@ -343,7 +343,7 @@
         },
         {
           title: 'SYSTEM', tag: 'STATUS', rows: [
-            { label: 'HOST', value: String((sys && sys.host) || '').slice(0, 12), pct: 0 },
+            { label: 'HOST', value: 'HALOFLUX', pct: 0 },
             { label: 'PROC', value: String(cpu.processes || 0), pct: Math.min(100, (cpu.processes || 0) / 4) },
             { label: 'CPU', value: String((cpu.name || '').slice(0, 12)), pct: cpu.total || 0 },
           ]
@@ -382,7 +382,7 @@
     /* system + 7 day load */
     $('b-sys').innerHTML =
       `<div class="stat-grid">
-         <div class="kvline"><span>HOST</span><span>${(s.host || DASH).toUpperCase()}</span></div>
+         <div class="kvline"><span>HOST</span><span>HALOFLUX</span></div>
          <div class="kvline"><span>USER</span><span>${(s.user || DASH).toUpperCase()}</span></div>
          <div class="kvline"><span>PROC / THR</span><span>${cpu.processes || 0} / ${cpu.threads || 0}</span></div>
          <div class="kvline"><span>HANDLES</span><span>${cpu.handles || 0}</span></div>

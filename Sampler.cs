@@ -173,7 +173,7 @@ public sealed class Sampler
                 var snap = new Snapshot
                 {
                     Time = DateTimeOffset.Now.ToUnixTimeMilliseconds(),
-                    Host = Environment.MachineName,
+                    Host = "HALOFLUX",   // never publish the real machine name
                     User = Environment.UserName,
                     UptimeSec = Environment.TickCount64 / 1000,
                 };

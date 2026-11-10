@@ -1200,7 +1200,7 @@ internal sealed class NativeWall : Form
                 Title = "SYSTEM", Tag = "STATUS",
                 Rows = new[]
                 {
-                    new Row { Label = "HOST", Value = Clip(Environment.MachineName, 11), Pct = 0 },
+                    new Row { Label = "HOST", Value = "HALOFLUX", Pct = 0 },
                     new Row { Label = "PROC", Value = s.Cpu.Processes.ToString(), Pct = Math.Min(100, s.Cpu.Processes / 4.0) },
                     new Row { Label = "CPU", Value = Clip(s.Cpu.Name, 11), Pct = s.Cpu.Total },
                 },
