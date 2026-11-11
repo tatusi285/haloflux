@@ -24,6 +24,9 @@ internal sealed class D3DWall : IDisposable
     private int _frames;
     public string LastStage { get; private set; } = "new";
 
+    /// <summary>False once Explorer restarts and takes the desktop window with it.</summary>
+    public bool HostAlive => _host != null && Native.IsWindow(_host.Handle);
+
     public D3DWall(int width, int height)
     {
         var parent = FindDesktopHost();

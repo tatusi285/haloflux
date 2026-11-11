@@ -25,6 +25,9 @@ internal sealed class NativeWall : Form
     private Bitmap? _frame;
     private Graphics? _fg;
     private Bitmap? _bg;
+    private Bitmap?[] _pool = Array.Empty<Bitmap?>();
+    private int[] _slotFrame = Array.Empty<int>();
+    private bool[] _slotReady = Array.Empty<bool>();
     private string[] _frames = Array.Empty<string>();
     private readonly Dictionary<int, Bitmap> _frameCache = new();
     private const int FrameRate = 15;
@@ -242,6 +245,7 @@ internal sealed class NativeWall : Form
                 foreach (var b in _ready.Values) b.Dispose();
                 _ready.Clear();
             }
+            if (_pool != null) foreach (var b in _pool) b?.Dispose();
             _plateG?.Dispose();
             _plate?.Dispose();
             _hudG?.Dispose();
@@ -321,6 +325,15 @@ internal sealed class NativeWall : Form
     {
         if (_frames.Length == 0 || _decoder != null) return;
 
+        // one bitmap per slot, reused forever: allocating 8 MB frames in a loop
+        // fragments the large object heap until the process is gigabytes big
+        int slots = Math.Min(_frames.Length, 20);
+        _pool = new Bitmap?[slots];
+        _slotFrame = new int[slots];
+        _slotReady = new bool[slots];
+
+        for (int i = 0; i < slots; i++) _slotFrame[i] = -1;
+
         _decoder = new Thread(() =>
         {
             while (true)
@@ -328,7 +341,7 @@ internal sealed class NativeWall : Form
                 try
                 {
                     int want = _wanted;
-                    int ahead = 16;
+                    int ahead = slots - 2;
 
                     for (int i = 0; i < ahead; i++)
                     {
@@ -336,31 +349,27 @@ internal sealed class NativeWall : Form
 
                         lock (_ready)
                         {
-                            if (_ready.ContainsKey(idx)) continue;
+                            if (IsSlotReady(idx)) continue;
                         }
 
                         using var src = Image.FromFile(_frames[idx]);
-                        var bmp = new Bitmap(W, H);
+
+                        int slot = FindSlotFor(idx);
+                        if (slot < 0) continue;
+
+                        var bmp = _pool[slot] ??= new Bitmap(W, H);
+
                         using (var g = Graphics.FromImage(bmp))
                         {
                             g.InterpolationMode = InterpolationMode.Bilinear;
+                            g.PixelOffsetMode = PixelOffsetMode.HighSpeed;
                             g.DrawImage(src, 0, 0, W, H);
                         }
 
                         lock (_ready)
                         {
-                            _ready[idx] = bmp;
-
-                            // keep the buffer small: drop anything far behind or ahead
-                            foreach (var key in _ready.Keys.ToList())
-                            {
-                                int dist = ((key - want) % _frames.Length + _frames.Length) % _frames.Length;
-                                if (dist > 40)
-                                {
-                                    _ready[key].Dispose();
-                                    _ready.Remove(key);
-                                }
-                            }
+                            _slotFrame[slot] = idx;
+                            _slotReady[slot] = true;
                         }
                     }
                 }
@@ -372,7 +381,41 @@ internal sealed class NativeWall : Form
         { IsBackground = true, Name = "frame-decoder" };
 
         _decoder.Start();
-        Log.Write("native: decoder thread started");
+        Log.Write("native: decoder started with " + slots + " reusable slots");
+    }
+
+    /// <summary>Finds a free slot, or steals the one furthest from the playhead.</summary>
+    private int FindSlotFor(int frame)
+    {
+        lock (_ready)
+        {
+            for (int i = 0; i < _slotReady.Length; i++)
+                if (!_slotReady[i]) return i;
+
+            int worst = 0, worstDist = -1;
+            for (int i = 0; i < _slotFrame.Length; i++)
+            {
+                int dist = ((_slotFrame[i] - _wanted) % _frames.Length + _frames.Length) % _frames.Length;
+                if (dist > worstDist) { worstDist = dist; worst = i; }
+            }
+
+            _slotReady[worst] = false;
+            return worst;
+        }
+    }
+
+    private bool IsSlotReady(int frame)
+    {
+        for (int i = 0; i < _slotFrame.Length; i++)
+            if (_slotReady[i] && _slotFrame[i] == frame) return true;
+        return false;
+    }
+
+    private Bitmap? FindSlotBitmap(int frame)
+    {
+        for (int i = 0; i < _slotFrame.Length; i++)
+            if (_slotReady[i] && _slotFrame[i] == frame) return _pool[i];
+        return null;
     }
 
     private Bitmap? FrameAt(double seconds)
@@ -382,15 +425,18 @@ internal sealed class NativeWall : Form
         int idx = (int)(seconds * FrameRate) % _frames.Length;
         _wanted = idx;
 
+        if (_slotFrame == null) return _bg;
+
         lock (_ready)
         {
-            if (_ready.TryGetValue(idx, out var bmp)) return bmp;
+            var exact = FindSlotBitmap(idx);
+            if (exact != null) return exact;
 
-            // fall back to the nearest ready frame so playback never stalls
+            // nearest ready frame, so playback never stalls
             for (int d = 1; d < 12; d++)
             {
-                if (_ready.TryGetValue((idx + d) % _frames.Length, out var near)) return near;
-                if (_ready.TryGetValue((idx - d + _frames.Length) % _frames.Length, out near)) return near;
+                var near = FindSlotBitmap((idx + d) % _frames.Length) ?? FindSlotBitmap((idx - d + _frames.Length) % _frames.Length);
+                if (near != null) return near;
             }
         }
 

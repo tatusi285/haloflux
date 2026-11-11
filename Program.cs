@@ -4,6 +4,8 @@ namespace HalofluxDesk;
 
 internal static class Program
 {
+    private static Mutex? _instance;
+
     [STAThread]
     private static void Main(string[] args)
     {
@@ -128,6 +130,14 @@ internal static class Program
 
         if (native || wallOnly)
         {
+            // one wallpaper at a time: a second copy would fight for the same desktop window
+            _instance = new Mutex(true, wallOnly ? "HalofluxWall" : "HalofluxNative", out bool first);
+            if (!first)
+            {
+                Log.Write("already running, exiting");
+                return;
+            }
+
             // the desktop wallpaper is silent; the screensaver is what carries the music
             MusicPlayer? music = wallOnly ? null : new MusicPlayer();
             music?.Start();
