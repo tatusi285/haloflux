@@ -32,12 +32,34 @@ dotnet build -c Release
 HalofluxDesk.exe --wall
 ```
 
-把 `--wall` 写进开机启动即可常驻：
+常驻方式见下方「让它常驻」。
+
+### 让它常驻
+
+壁纸是普通进程，登录后自动启动即可。三件事一起做就是"永远在"：
 
 ```powershell
 $exe = "$PWD\bin\Release\net9.0-windows\HalofluxDesk.exe"
-Set-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name HalofluxDesk -Value "`"$exe`" --wall"
+
+# 1. 登录自启
+Set-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" `
+    -Name HalofluxDesk -Value "`"$exe`" --wall"
+
+# 2. 看门狗：每 5 分钟检查一次，进程没了就拉起
+schtasks /Create /TN "HalofluxWatchdog" /SC MINUTE /MO 5 `
+    /TR "`"$PWD\tools\watchdog.cmd`"" /F
 ```
+
+程序自己也会修复这些情况：
+
+| 情况 | 行为 |
+|---|---|
+| 重复启动 | 单实例锁，第二个进程直接退出 |
+| Explorer 重启、桌面窗口重建 | 每 3 秒检查宿主窗口，失效就重建交换链 |
+| 睡眠唤醒、切换分辨率 | 监听系统事件，自动重建交换链 |
+| 崩溃 | 看门狗任务在 5 分钟内拉起 |
+
+内存占用稳定在 300 MB 上下：解码器使用固定缓冲池复用位图，不会随运行时间增长。
 
 ### 屏保
 
