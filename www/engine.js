@@ -33,6 +33,7 @@ const HFX = (() => {
   const specPeaks = new Array(48).fill(0);
   let dustField = [];
   let beatPulse = 0;
+  let beatAge = 99;
   let beatCool = 0;
   const shocks = [];
   let silenceFor = 0;
@@ -1516,49 +1517,77 @@ const HFX = (() => {
     }
   }
 
+  let dustGlow = null;
+  function makeDustGlow() {
+    const s = 64;
+    const c = document.createElement('canvas');
+    c.width = c.height = s;
+    const g = c.getContext('2d');
+    const grd = g.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
+    grd.addColorStop(0.0, 'rgba(255,255,255,1)');
+    grd.addColorStop(0.25, 'rgba(220,240,255,0.75)');
+    grd.addColorStop(0.55, 'rgba(150,205,255,0.22)');
+    grd.addColorStop(1.0, 'rgba(120,180,255,0)');
+    g.fillStyle = grd;
+    g.fillRect(0, 0, s, s);
+    dustGlow = c;
+  }
+
   function drawSpectrum() {
-    // A cloud of dust around the ring. Nothing draws a bar: the sound pushes the
-    // particles outward and makes them shimmer, which reads as air being moved.
+    // Dust floating around the ring. Sound pushes it outward and lights it up, and every
+    // beat sends a brighter shell travelling through the cloud.
     if (!dustField.length) seedDust();
+    if (!dustGlow) makeDustGlow();
 
     const g = geo();
     const energy = Math.min(1, audS.level * 2.2);
-    const bass = (audS.bands[0] + audS.bands[1] + audS.bands[2]) / 3;
     const treble = (audS.bands[26] + audS.bands[28] + audS.bands[30]) / 3;
 
-    const push = 1 + beatPulse * 0.075 + bass * 0.06 + energy * 0.03;
+    const push = 1 + beatPulse * 0.075 + energy * 0.03;
+
+    // the shell expands outward at ~0.5 radius factors per second
+    const shell = beatAge * 0.55;
+    const shellWidth = 0.10;
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
 
     for (let i = 0; i < dustField.length; i++) {
       const p = dustField[i];
 
       p.a += p.drift * 0.01;
-
-      // the beat shoves the grain outward, then it drifts back
       p.push = p.push * 0.985 + beatPulse * 0.010 * (0.4 + p.twinkle);
 
-      const r = g.ro * p.r * (1 + p.push) * push;
+      const rf = p.r * (1 + p.push) * push;
+      const r = g.ro * rf;
       const x = g.cx + Math.cos(p.a) * r;
       const y = g.cy + Math.sin(p.a) * r * 0.985;
 
       const tw = 0.55 + 0.45 * Math.sin(t * 1.7 + p.seed);
-      const near = 1.35 - (p.r - 1.0);            // grains close to the ring are brighter
-      const a = (0.26 + 0.40 * energy + beatPulse * 0.45) * p.twinkle * tw * near;
 
-      if (a <= 0.02) continue;
+      // light from the beat shell passed this grain a moment ago
+      const d = Math.abs(rf - 1.0 - shell);
+      const wave = d < shellWidth ? (1 - d / shellWidth) * Math.exp(-beatAge * 1.1) : 0;
 
-      const warm = beatPulse * 0.6;
-      const size = p.size * (1 + beatPulse * 0.6);
+      const near = 1.35 - (p.r - 1.0);
+      const a = (0.16 + 0.30 * energy + wave * 0.85) * p.twinkle * tw * near;
 
+      if (a <= 0.015) continue;
+
+      const size = p.size * (2.4 + wave * 3.2 + beatPulse * 1.2);
+
+      // coloured by pitch: cool white at the top end, lavender at the bottom
+      const tint = 0.75 + treble * 0.25;
+      ctx.globalAlpha = Math.min(0.92, a);
+      ctx.drawImage(dustGlow, x - size, y - size, size * 2, size * 2);
+      ctx.globalAlpha = Math.min(1, a * (0.6 + wave * 1.2));
+      ctx.fillStyle = `rgba(${Math.round(210 * tint + 40)},${Math.round(238 * tint)},255,1)`;
       ctx.beginPath();
-      ctx.arc(x, y, size * 2.6, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(170,215,255,${a * 0.16})`;
-      ctx.fill();
-
-      ctx.beginPath();
-      ctx.arc(x, y, size, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(${Math.round(210 + warm * 40)},${Math.round(236 + treble * 18)},255,${Math.min(1, a * 1.6)})`;
+      ctx.arc(x, y, p.size * (0.9 + wave * 0.8), 0, Math.PI * 2);
       ctx.fill();
     }
+
+    ctx.restore();
   }
 
   /* ---------- audio events: beats, track changes, silence ---------- */
@@ -1580,6 +1609,7 @@ const HFX = (() => {
       beatCool = 0.26;
       shocks.push({ life: 0 });
       beatPulse = 1;
+      beatAge = 0;
     }
 
     for (let i = shocks.length - 1; i >= 0; i--) {
@@ -1588,6 +1618,7 @@ const HFX = (() => {
     }
 
     beatPulse = Math.max(0, beatPulse - dt * 1.6);
+    beatAge += dt;
 
     // silence -> standby
     if (audS.level < 0.02) silenceFor += dt; else silenceFor = 0;
