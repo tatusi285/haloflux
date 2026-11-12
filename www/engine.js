@@ -1499,75 +1499,56 @@ const HFX = (() => {
 
   function drawSpectrum() {
     const g = geo();
-    const half = 24;                      // 24 per side, mirrored across the vertical axis
-    const r0 = g.ro * 1.03;
-    const maxLen = (g.ro - g.ri) * 0.26;
+    const pts = 120;
+    const rBase = g.ro * 1.015;
+    const amp = (g.ro - g.ri) * 0.32;
 
-    // read the bands once so they can be normalised against each other:
-    // a raw gain saturates and every bar ends up the same length
-    const raw = new Array(half);
-    let lo = Infinity, hi = -Infinity;
-
-    for (let i = 0; i < half; i++) {
-      const v = bandAt(Math.round(i * 1.2), half);
-      raw[i] = v;
-      if (v < lo) lo = v;
-      if (v > hi) hi = v;
+    // sample the bands around the circle, then smooth them so the outline undulates
+    // instead of spiking: radial spikes read as a sea urchin, a soft curve reads as liquid
+    const raw = new Array(pts);
+    for (let i = 0; i < pts; i++) {
+      const around = i / pts;                       // 0..1 all the way round
+      const mirror = around <= 0.5 ? around * 2 : (1 - around) * 2;   // symmetric left/right
+      raw[i] = bandAt(Math.round(mirror * 30), 32);
     }
 
-    const spread = Math.max(0.02, hi - lo);
-    const loudness = Math.min(1, audS.level * 2.2);
-
-    ctx.lineCap = 'round';
-
-    for (let i = 0; i < half; i++) {
-      const t01 = i / (half - 1);
-      const angle = -Math.PI / 2 + Math.PI * t01;
-
-      // relative shape inside the frame, scaled by how loud the moment is
-      let v = (raw[i] - lo) / spread;
-      v = Math.pow(v, 1.5) * (0.15 + 0.85 * loudness);
-
-      specPeaks[i] = Math.max(v, specPeaks[i] - 0.012);
-
-      const len = maxLen * v;
-      const peakLen = maxLen * specPeaks[i];
-
-      const r = Math.round(120 + 120 * t01);
-      const gg = Math.round(225 - 60 * t01);
-
-      for (const side of [-1, 1]) {
-        const a = side < 0 ? -Math.PI / 2 - (angle + Math.PI / 2) : angle;
-
-        if (len > 1.5) {
-          const x0 = g.cx + Math.cos(a) * r0;
-          const y0 = g.cy + Math.sin(a) * r0;
-          const x1 = g.cx + Math.cos(a) * (r0 + len);
-          const y1 = g.cy + Math.sin(a) * (r0 + len);
-
-          ctx.beginPath();
-          ctx.moveTo(x0, y0);
-          ctx.lineTo(x1, y1);
-          ctx.lineWidth = 2.8;
-          ctx.strokeStyle = `rgba(${r},${gg},255,${0.25 + v * 0.6})`;
-          ctx.stroke();
-        }
-
-        if (peakLen > 2) {
-          const px = g.cx + Math.cos(a) * (r0 + peakLen);
-          const py = g.cy + Math.sin(a) * (r0 + peakLen);
-          const tx = Math.cos(a + Math.PI / 2) * 2;
-          const ty = Math.sin(a + Math.PI / 2) * 2;
-
-          ctx.beginPath();
-          ctx.moveTo(px - tx, py - ty);
-          ctx.lineTo(px + tx, py + ty);
-          ctx.lineWidth = 1.8;
-          ctx.strokeStyle = `rgba(228,244,255,${0.30 + specPeaks[i] * 0.5})`;
-          ctx.stroke();
-        }
+    const smooth = new Array(pts);
+    const wide = 6;
+    for (let i = 0; i < pts; i++) {
+      let sum = 0, wsum = 0;
+      for (let k = -wide; k <= wide; k++) {
+        const w = 1 - Math.abs(k) / (wide + 1);
+        sum += raw[(i + k + pts) % pts] * w;
+        wsum += w;
       }
+      smooth[i] = sum / wsum;
     }
+
+    let hi = 0.001;
+    for (let i = 0; i < pts; i++) hi = Math.max(hi, smooth[i]);
+
+    const loudness = Math.min(1, audS.level * 2.4);
+
+    ctx.beginPath();
+    for (let i = 0; i <= pts; i++) {
+      const idx = i % pts;
+      const a = -Math.PI / 2 + (idx / pts) * Math.PI * 2;
+      const v = Math.pow(smooth[idx] / hi, 1.25) * loudness;
+      const r = rBase + amp * v;
+      const x = g.cx + Math.cos(a) * r;
+      const y = g.cy + Math.sin(a) * r;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+
+    ctx.lineWidth = 2.2;
+    ctx.strokeStyle = `rgba(188,230,255,${0.30 + loudness * 0.45})`;
+    ctx.stroke();
+
+    // a wider, dimmer copy gives it a soft halo without costing much
+    ctx.lineWidth = 7;
+    ctx.strokeStyle = `rgba(140,200,255,${0.035 + loudness * 0.05})`;
+    ctx.stroke();
   }
 
   /* ---------- audio events: beats, track changes, silence ---------- */
