@@ -475,7 +475,9 @@
   function onHostMessage(e) {
     try {
       const msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
-      if (msg && msg.type === 'cursor' && window.HFX) HFX.setCursor(msg.x, msg.y, msg.over);
+      if (!msg) return;
+      if (msg.type === 'cursor' && window.HFX) HFX.setCursor(msg.x, msg.y, msg.over);
+      if (msg.type === 'music' && window.HFX) HFX.setMusic(msg.pos, msg.dur, msg.playing);
     } catch { }
   }
 

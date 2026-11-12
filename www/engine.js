@@ -20,6 +20,13 @@ const HFX = (() => {
 
   let meteors = [];
   const aud = { level: 0, bands: new Array(32).fill(0) };
+
+  // data arcs: eased value, breathing phase, change pulse
+  const arcMeters = [];
+  let rotBoost = 0;
+
+  // music progress, interpolated between host updates so it never stutters
+  const music = { pos: 0, dur: 0, playing: false, stamp: 0 };
   const audS = { level: 0, bands: new Array(32).fill(0) };
   let sparks = [];
   let specks = [];
@@ -214,6 +221,13 @@ const HFX = (() => {
   }
 
   /* ---------------- stats ---------------- */
+
+  function setMusic(pos, dur, playing) {
+    music.pos = pos || 0;
+    music.dur = dur || 0;
+    music.playing = !!playing;
+    music.stamp = performance.now();
+  }
 
   function feed(s) {
     if (!s || !s.cpu) return;
@@ -1308,7 +1322,10 @@ const HFX = (() => {
       cores[i] += ((coreTarget[i] || 0) - cores[i]) * k;
     }
 
-    rot += dt * (0.020 + (sm.cpu / 100) * 0.075);
+    // the ring turns faster the harder the machine works, but eases so it never jumps
+    const cpuLoad = Math.min(1, sm.cpu / 100);
+    rotBoost += (cpuLoad - rotBoost) * Math.min(1, dt * 1.1);
+    rot += dt * (0.012 + rotBoost * 0.24);
     if (pulseT > 0) pulseT = Math.max(0, pulseT - dt * 0.75);
 
     audS.level += (aud.level - audS.level) * Math.min(1, dt * 9);
@@ -1328,6 +1345,8 @@ const HFX = (() => {
     drawDetail();
     drawStatusSegments();
     drawSectorPanels();
+    drawArcMeters();
+    drawMusicArc();
     drawSatellite();
     // window previews are native DWM thumbnails now
     drawVignette();
@@ -1401,6 +1420,131 @@ const HFX = (() => {
     ctx.textBaseline = 'alphabetic';
   }
 
+  /* ---------- data arcs: one per sector, along its inner edge ---------- */
+  function drawArcMeters() {
+    if (!sectorPanels.length) return;
+
+    const g = geo();
+    const n = sectorPanels.length;
+    const span = (Math.PI * 2) / n;
+    const pad = 0.035;
+    const drift = rot * 0.18;
+
+    while (arcMeters.length < n) arcMeters.push({ shown: 0, target: 0, flash: 0, seed: Math.random() });
+
+    for (let i = 0; i < n; i++) {
+      const p = sectorPanels[i];
+      const m = arcMeters[i];
+
+      const a0 = i * span - Math.PI / 2 + drift + pad;
+      const a1 = a0 + span - pad * 2;
+      const usable = a1 - a0;
+
+      // a panel's headline is its first row that carries a real percentage
+      const row = (p.rows || []).find(r => typeof r.pct === 'number' && r.pct > 0);
+      const pct = row ? Math.max(0, Math.min(1, row.pct / 100)) : 0;
+
+      // remember the previous value so a real change can be announced
+      if (!m.init) { m.init = true; m.shown = pct; m.target = pct; }
+      if (Math.abs(pct - m.target) > 0.04) m.flash = 1;
+      m.target = pct;
+      m.shown += (m.target - m.shown) * 0.12;
+      m.flash = Math.max(0, m.flash - 0.05);
+
+      // a slow breath keeps the arc alive even when the value is flat
+      const breath = 1 + Math.sin(t * 0.55 + m.seed * 6.283) * 0.012;
+      const shown = Math.max(0, Math.min(1, m.shown * breath));
+
+      const r = g.ri + 9;
+      const track0 = a0 + usable * 0.10;
+      const track1 = a1 - usable * 0.10;
+      const trackLen = track1 - track0;
+
+      // track
+      ctx.beginPath();
+      ctx.arc(g.cx, g.cy, r, track0, track1);
+      ctx.lineWidth = 2.4;
+      ctx.strokeStyle = 'rgba(150,190,220,0.10)';
+      ctx.stroke();
+
+      // fill
+      const fillEnd = track0 + trackLen * shown;
+      const hot = m.flash;
+      ctx.beginPath();
+      ctx.arc(g.cx, g.cy, r, track0, fillEnd);
+      ctx.lineWidth = 2.6 + hot * 1.6;
+      ctx.strokeStyle = hot > 0.02
+        ? `rgba(255,${238 - hot * 30},${214 - hot * 50},${0.55 + hot * 0.4})`
+        : `rgba(${160 + hot * 60},228,255,${0.62 + hot * 0.3})`;
+      ctx.stroke();
+
+      // the tip: a small comet head so movement is obvious
+      if (shown > 0.01) {
+        const tip = pt(g.cx, g.cy, r, fillEnd);
+        ctx.beginPath();
+        ctx.arc(tip.x, tip.y, 2.1 + hot * 1.4, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(235,250,255,${0.75 + hot * 0.25})`;
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(tip.x, tip.y, 5.5 + hot * 4, 0, Math.PI * 2);
+        const glow = ctx.createRadialGradient(tip.x, tip.y, 0, tip.x, tip.y, 6 + hot * 5);
+        glow.addColorStop(0, `rgba(190,235,255,${0.5 + hot * 0.4})`);
+        glow.addColorStop(1, 'rgba(190,235,255,0)');
+        ctx.fillStyle = glow;
+        ctx.fill();
+      }
+    }
+  }
+
+  /* ---------- music progress: a thin arc on the inner rim ---------- */
+  function drawMusicArc() {
+    if (!music.dur) return;
+
+    const g = geo();
+    const elapsed = music.playing ? music.pos + (performance.now() - music.stamp) / 1000 : music.pos;
+    const frac = Math.max(0, Math.min(1, elapsed / music.dur));
+
+    const r = g.ri * 0.90;
+    const start = -Math.PI / 2;
+
+    // track
+    ctx.beginPath();
+    ctx.arc(g.cx, g.cy, r, 0, Math.PI * 2);
+    ctx.lineWidth = 2.4;
+    ctx.strokeStyle = 'rgba(150,190,220,0.10)';
+    ctx.stroke();
+
+    // start marker at twelve o'clock
+    const top = pt(g.cx, g.cy, r, start);
+    ctx.beginPath();
+    ctx.arc(top.x, top.y, 2.2, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(210,235,255,0.55)';
+    ctx.fill();
+
+    if (frac <= 0.001) return;
+
+    ctx.beginPath();
+    ctx.arc(g.cx, g.cy, r, start, start + Math.PI * 2 * frac);
+    ctx.lineWidth = 3.2;
+    ctx.strokeStyle = music.playing ? 'rgba(205,245,255,0.92)' : 'rgba(150,190,220,0.40)';
+    ctx.stroke();
+
+    const tip = pt(g.cx, g.cy, r, start + Math.PI * 2 * frac);
+    ctx.beginPath();
+    ctx.arc(tip.x, tip.y, 3.4, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(240,252,255,0.98)';
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(tip.x, tip.y, 8, 0, Math.PI * 2);
+    const halo = ctx.createRadialGradient(tip.x, tip.y, 0, tip.x, tip.y, 8);
+    halo.addColorStop(0, 'rgba(200,240,255,0.45)');
+    halo.addColorStop(1, 'rgba(200,240,255,0)');
+    ctx.fillStyle = halo;
+    ctx.fill();
+  }
+
   function drawSectorPanels() {
     if (!sectorPanels.length) return;
     const g = geo();
@@ -1449,25 +1593,6 @@ const HFX = (() => {
         drawArcText(row.label || '', g.cx, g.cy, rr, a0 + 0.10, 0.050, 'rgba(158,188,212,0.95)', 8, false);
         drawArcText(row.value || '', g.cx, g.cy, rr, a1 - 0.10, 0.052, 'rgba(240,250,255,1.0)', 9, true);
 
-        if (typeof row.pct === 'number') {
-          const pct = Math.max(0, Math.min(1, row.pct / 100));
-          const b0 = a0 + (a1 - a0) * 0.30;
-          const b1 = b0 + (a1 - a0) * 0.44;
-          const bw = rr - 5;
-
-          ctx.beginPath();
-          ctx.arc(g.cx, g.cy, bw, b0, b1);
-          ctx.strokeStyle = 'rgba(255,255,255,0.08)';
-          ctx.lineWidth = 3;
-          ctx.stroke();
-
-          ctx.beginPath();
-          ctx.arc(g.cx, g.cy, bw, b0, b0 + (b1 - b0) * pct);
-          ctx.strokeStyle = pct > 0.8 ? 'rgba(255,120,120,0.95)'
-            : pct > 0.6 ? 'rgba(255,208,140,0.95)'
-              : 'rgba(150,225,255,0.95)';
-          ctx.stroke();
-        }
       }
     }
   }
@@ -1531,7 +1656,7 @@ const HFX = (() => {
 
   function ringAngle() { return rot; }
 
-  return { init, feed, feedAudio, feedIcons, feedWindows, setCursor, hits, setStatus, setPanels, toggleDetail, setAudio, flashAt, ringAngle, start, stop, resize };
+  return { init, feed, setMusic, feedAudio, feedIcons, feedWindows, setCursor, hits, setStatus, setPanels, toggleDetail, setAudio, flashAt, ringAngle, start, stop, resize };
 })();
 
 window.HFX = HFX;

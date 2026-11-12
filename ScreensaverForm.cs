@@ -17,6 +17,7 @@ internal sealed class ScreensaverForm : Form
     private Point _origin;
     private bool _ready;
     private System.Windows.Forms.Timer? _watch;
+    private System.Windows.Forms.Timer? _musicTick;
     private bool _armed;
     private Label? _osd;
     private System.Windows.Forms.Timer? _osdTimer;
@@ -80,6 +81,23 @@ internal sealed class ScreensaverForm : Form
                     if (ShouldExit()) Quit();
                 };
                 _watch.Start();
+
+                // the page draws the progress arc, so it needs the playhead
+                _musicTick = new System.Windows.Forms.Timer { Interval = 500 };
+                _musicTick.Tick += (_, _) =>
+                {
+                    try
+                    {
+                        var payload = "{\"type\":\"music\",\"pos\":" +
+                                      _music.PositionSeconds.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) +
+                                      ",\"dur\":" +
+                                      _music.DurationSeconds.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) +
+                                      ",\"playing\":" + (_music.Playing ? "true" : "false") + "}";
+                        _web.CoreWebView2?.PostWebMessageAsJson(payload);
+                    }
+                    catch { }
+                };
+                _musicTick.Start();
                 _ready = true;
             }
             catch (Exception ex)
@@ -177,6 +195,7 @@ internal sealed class ScreensaverForm : Form
     private void Quit()
     {
         _watch?.Stop();
+        _musicTick?.Stop();
         try { Native.SetThreadExecutionState(Release); } catch { }
         try { _music.Stop(); } catch { }
         Close();

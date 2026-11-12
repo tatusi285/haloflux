@@ -73,6 +73,10 @@ internal sealed class MusicPlayer : IDisposable
 
     public bool Playing => _output != null && _output.PlaybackState == PlaybackState.Playing;
 
+    public double PositionSeconds => _reader?.CurrentTime.TotalSeconds ?? 0;
+
+    public double DurationSeconds => _reader?.TotalTime.TotalSeconds ?? 0;
+
     public string Current
     {
         get
