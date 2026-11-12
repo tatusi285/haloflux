@@ -30,7 +30,7 @@ internal sealed class D3DDesk : IDisposable
         _renderer = renderer;
         _wall = new D3DWall(NativeWall.SurfaceW, NativeWall.SurfaceH);
 
-        _timer = new System.Windows.Forms.Timer { Interval = 33 };
+        _timer = new System.Windows.Forms.Timer { Interval = 20 };
         _timer.Tick += (_, _) => Pump();
         _timer.Start();
 
@@ -114,6 +114,8 @@ internal sealed class D3DDesk : IDisposable
 
             if ((DateTime.UtcNow - _stamp).TotalSeconds >= 5)
             {
+                _renderer.DiagFps = _frames / (DateTime.UtcNow - _stamp).TotalSeconds;
+
                 if (_frames > 0)
                 {
                     Log.Write(string.Format("perf: render {0:0.0} ms  blit {1:0.0} ms  fps {2:0.0}",

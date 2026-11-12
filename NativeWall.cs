@@ -1,3 +1,4 @@
+using System.Drawing.Imaging;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Drawing;
@@ -25,6 +26,7 @@ internal sealed class NativeWall : Form
     private Bitmap? _frame;
     private Graphics? _fg;
     private Bitmap? _bg;
+    private ImageAttributes? _alpha;
     private Bitmap?[] _pool = Array.Empty<Bitmap?>();
     private int[] _slotFrame = Array.Empty<int>();
     private bool[] _slotReady = Array.Empty<bool>();
@@ -162,10 +164,16 @@ internal sealed class NativeWall : Form
 
     internal Bitmap? Frame => _frame;
 
+    /// <summary>Measured presentation rate, fed by the driver so the overlay can show it.</summary>
+    internal double DiagFps;   // plain field: WinForms does not want designer-visible properties here
+
     /// <summary>Index of the video frame on screen, or -1 when the scene animates every frame.</summary>
     internal int FrameId => _minimal && _frames.Length > 0
-        ? (int)(_clock.Elapsed.TotalSeconds * FrameRate) % _frames.Length
-        : -1;   // read the clock, not _t: _t only advances when we actually render
+        ? (int)(_clock.Elapsed.TotalSeconds * WallFps)   // read the clock, not _t
+        : -1;
+
+    /// <summary>How often the wallpaper presents: double the footage rate while cross fading.</summary>
+    internal int WallFps => Config.Current.CrossFade ? FrameRate * 2 : FrameRate;
 
     internal void RenderFrame()
     {
@@ -612,16 +620,96 @@ internal sealed class NativeWall : Form
         }
     }
 
+    /// <summary>Tiny readout in the corner, only when haloflux.json asks for it.</summary>
+    private void DrawDiagnostics(Graphics g)
+    {
+        int ready = 0;
+        for (int i = 0; i < _slotReady.Length; i++) if (_slotReady[i]) ready++;
+
+        var text = string.Format(
+            "fps {0:0.0}     frame {1}/{2}     pool {3}/{4}     mem {5} MB",
+            DiagFps, (int)(_t * FrameRate) % Math.Max(1, _frames.Length), _frames.Length,
+            ready, _slotReady.Length, GC.GetTotalMemory(false) / (1024 * 1024));
+
+        using var font = new Font("Consolas", 10f);
+        using var back = new SolidBrush(Color.FromArgb(120, 0, 0, 0));
+        using var ink = new SolidBrush(Color.FromArgb(210, 200, 235, 255));
+
+        var size = g.MeasureString(text, font);
+        g.FillRectangle(back, W - size.Width - 24, 10, size.Width + 14, size.Height + 8);
+        g.DrawString(text, font, ink, W - size.Width - 17, 13);
+    }
+
+    /// <summary>
+    /// The footage arrives at 15 fps. Drawing it as-is looks steppy, so the outgoing frame is
+    /// blended into the incoming one and the result is presented at double the rate.
+    /// </summary>
+    private void RenderVideoFrame(Graphics g)
+    {
+        if (_frames.Length == 0)
+        {
+            if (_bg != null) g.DrawImage(_bg, 0, 0, W, H);
+            return;
+        }
+
+        double pos = _t * FrameRate;
+        int prev = (int)Math.Floor(pos) % _frames.Length;
+        int next = (prev + 1) % _frames.Length;
+        float mix = (float)(pos - Math.Floor(pos));
+
+        var a = GetFrame(prev);
+        var b = GetFrame(next);
+
+        if (a == null && b == null)
+        {
+            if (_bg != null) g.DrawImage(_bg, 0, 0, W, H);
+            return;
+        }
+
+        if (a == null) a = b;
+        if (b == null) b = a;
+
+        g.DrawImageUnscaled(a!, 0, 0);
+
+        if (Config.Current.CrossFade && mix > 0.02f && !ReferenceEquals(a, b))
+        {
+            _alpha?.Dispose();
+            _alpha = new ImageAttributes();
+            var cm = new ColorMatrix { Matrix33 = mix };
+            _alpha.SetColorMatrix(cm, ColorMatrixFlag.Default, ColorAdjustType.Bitmap);
+            g.DrawImage(b!, new Rectangle(0, 0, W, H), 0, 0, W, H, GraphicsUnit.Pixel, _alpha);
+        }
+    }
+
+    /// <summary>Frame by absolute index, or the closest decoded neighbour.</summary>
+    private Bitmap? GetFrame(int index)
+    {
+        if (_slotFrame == null || _slotFrame.Length == 0) return _bg;
+
+        lock (_ready)
+        {
+            var exact = FindSlotBitmap(index);
+            if (exact != null) return exact;
+
+            for (int d = 1; d < 12; d++)
+            {
+                var near = FindSlotBitmap((index + d) % _frames.Length)
+                        ?? FindSlotBitmap((index - d + _frames.Length) % _frames.Length);
+                if (near != null) return near;
+            }
+        }
+
+        return _bg;
+    }
+
     private void RenderScene()
     {
         var g = _fg!;
 
         if (_minimal)
         {
-            var shot = FrameAt(_t);
-            if (shot != null) g.DrawImageUnscaled(shot, 0, 0);
-            else if (_bg != null) g.DrawImage(_bg, 0, 0, W, H);
-            if (_vignette != null && _nebula == null) g.DrawImageUnscaled(_vignette, 0, 0);
+            RenderVideoFrame(g);
+            if (Config.Current.ShowDiagnostics) DrawDiagnostics(g);
             return;
         }
         var snap = _sampler.Latest;
