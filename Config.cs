@@ -20,6 +20,12 @@ internal sealed class Config
     /// <summary>Below this frame-to-frame difference the blend is skipped to save CPU.</summary>
     public int MotionThreshold { get; set; } = 8;
 
+    /// <summary>A faint glow on the wallpaper, so it reads as the same world as the HUD.</summary>
+    public bool StyleBridge { get; set; } = true;
+
+    /// <summary>Very slow global brightness swell, in percent.</summary>
+    public int Breathing { get; set; } = 3;
+
     private static readonly string Path_ =
         System.IO.Path.Combine(AppContext.BaseDirectory, "haloflux.json");
 

@@ -326,3 +326,37 @@ ffmpeg -i scene-clean.mp4 -vf "fps=15,scale=1920:-2" -q:v 5 frames\f_%04d.jpg
 改 `haloflux.json` 里的 `CrossFade` / `WallFps` 即可切换，不用重编译。
 
 **注意**：GDI+ 的整帧 alpha 混合就是这个量级，想再降只能换渲染后端（Direct2D 或 GPU 混合），不属于小改动。
+
+---
+
+## 十五、基准测试 `--bench`
+
+改完代码用它对比，别靠肉眼：
+
+```powershell
+cd bin\Release\net9.0-windows
+.\HalofluxDesk.exe --bench=20        # 跑 20 秒
+```
+
+输出 fps、render 的 mean / p50 / p95 / max、CPU 占用、内存峰值，并写一份
+`bench-<时间>.txt`。它只测渲染路径（不含 D3D 上传），适合比较改动前后。
+
+**基线（2026-11-12，40 秒片段，20fps，自适应淡化）**
+
+```
+frames 301 (20.1 fps)  render mean 6.5 ms  p95 10.6 ms  cpu 46%  311 MB
+```
+
+## 十六、视觉效果的两个"烘焙"技巧
+
+壁纸的 CPU 预算很紧，凡是能离线算的就别在运行时算：
+
+| 效果 | 运行时做法 | 实测代价 | 现在怎么做 |
+|---|---|---|---|
+| 色彩分级 | 每帧套 ColorMatrix | 未测，估计 8 ms | **烘进视频**（ffmpeg colorbalance + eq） |
+| 画面呼吸（±3% 亮度，40 秒周期） | 每帧全屏 alpha 填充 | **8.7 ms** | **烘进帧序列**（`eq=brightness='0.025*sin(2*PI*t/40)'`） |
+| 风格衔接光晕 | 每帧缩放绘制 | 5 ms | **预缩放缓存**（0.2 ms） |
+
+呼吸的周期必须和循环长度一致（40 秒），否则循环接缝处会跳。
+
+这些参数都在 `haloflux.json`：`StyleBridge`、`Breathing`、`Vignette`、`MotionThreshold`、`WallFps`、`CrossFade`。

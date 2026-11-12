@@ -108,6 +108,21 @@ internal static class Program
             return;
         }
 
+        // --bench[=seconds]: headless measurement of the wallpaper render path
+        var benchArg = args.FirstOrDefault(a =>
+            a.Equals("--bench", StringComparison.OrdinalIgnoreCase) ||
+            a.StartsWith("--bench=", StringComparison.OrdinalIgnoreCase));
+
+        if (benchArg != null)
+        {
+            int seconds = 30;
+            var eq = benchArg.IndexOf('=');
+            if (eq > 0) int.TryParse(benchArg[(eq + 1)..], out seconds);
+
+            Bench.Run(seconds);
+            return;
+        }
+
         // Windows starts a .scr with /s (full screen) or /p <hwnd> (preview)
         bool saver = args.Any(a =>
             a.Equals("/s", StringComparison.OrdinalIgnoreCase) ||

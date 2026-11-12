@@ -27,6 +27,7 @@ internal sealed class NativeWall : Form
     private Graphics? _fg;
     private Bitmap? _bg;
     private ImageAttributes? _alpha;
+    private Bitmap? _bridge;
     private Bitmap?[] _pool = Array.Empty<Bitmap?>();
     private int[] _slotFrame = Array.Empty<int>();
     private bool[] _slotReady = Array.Empty<bool>();
@@ -638,6 +639,23 @@ internal sealed class NativeWall : Form
         g.FillEllipse(brush, 0, 0, 256, 256);
     }
 
+    /// <summary>A very faint radial glow, for the hint of the core on the wallpaper.</summary>
+    private static Bitmap MakeSoftGlow(int size, int alpha)
+    {
+        var bmp = new Bitmap(size, size);
+        using var g = Graphics.FromImage(bmp);
+        using var path = new GraphicsPath();
+        path.AddEllipse(0, 0, size, size);
+        using var brush = new PathGradientBrush(path)
+        {
+            CenterColor = Color.FromArgb(alpha, 226, 242, 255),
+            SurroundColors = new[] { Color.FromArgb(0, 226, 242, 255) },
+            FocusScales = new PointF(0.10f, 0.10f),
+        };
+        g.FillEllipse(brush, 0, 0, size, size);
+        return bmp;
+    }
+
     private void MakeGlow()
     {
         _glow = new Bitmap(256, 256);
@@ -671,6 +689,39 @@ internal sealed class NativeWall : Form
                 Log.Write("native render error: " + ex);
             }
         }
+    }
+
+    /// <summary>
+    /// The screensaver lives around a bright core. A very faint version of that same core
+    /// on the wallpaper ties the two together instead of feeling like two products.
+    /// </summary>
+    private void DrawStyleBridge(Graphics g)
+    {
+        if (!Config.Current.StyleBridge) return;
+
+        // build it once at the size it is drawn at: scaling a big alpha bitmap every frame
+        // costs more than the effect is worth
+        int size = (int)(H * 0.30);
+        if (_bridge == null || _bridge.Width != size) _bridge = MakeSoftGlow(size, 30);
+
+        int x = (int)(W * 0.635) - size / 2;
+        int y = (int)(H * 0.445) - size / 2;
+
+        g.DrawImageUnscaled(_bridge, x, y);
+    }
+
+    /// <summary>A slow, barely visible swell in overall brightness.</summary>
+    private void DrawBreathing(Graphics g)
+    {
+        int amount = Config.Current.Breathing;
+        if (amount <= 0) return;
+
+        double phase = Math.Sin(_t * (Math.PI * 2 / 40.0));      // 40 second cycle
+        int alpha = (int)((phase * 0.5 + 0.5) * amount * 2.2);   // 0 .. amount*2.2
+        if (alpha <= 0) return;
+
+        using var brush = new SolidBrush(Color.FromArgb(alpha, 255, 255, 255));
+        g.FillRectangle(brush, 0, 0, W, H);
     }
 
     /// <summary>Tiny readout in the corner, only when haloflux.json asks for it.</summary>
@@ -774,6 +825,8 @@ internal sealed class NativeWall : Form
         if (_minimal)
         {
             RenderVideoFrame(g);
+            DrawStyleBridge(g);
+            DrawBreathing(g);
             if (Config.Current.ShowDiagnostics) DrawDiagnostics(g);
             return;
         }
