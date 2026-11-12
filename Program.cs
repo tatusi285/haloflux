@@ -149,6 +149,12 @@ internal static class Program
         if (args.Any(a => a.StartsWith("/p", StringComparison.OrdinalIgnoreCase)))
             return;   // preview pane: nothing to draw
 
+        if (wallOnly && Native.GameRunning())
+        {
+            Log.Write("exit: a game is running at startup");
+            return;
+        }
+
         if (native || wallOnly)
         {
             // one wallpaper at a time: a second copy would fight for the same desktop window

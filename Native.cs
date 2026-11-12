@@ -181,35 +181,29 @@ internal static class Native
     private static DateTime _gameCheckAt = DateTime.MinValue;
     private static bool _gameRunning;
 
-    /// <summary>True when a game is running, whether or not it owns the screen yet.</summary>
+    /// <summary>
+    /// True when a game is running. Queried by name rather than enumerating every
+    /// process, and cached for half a second so it can be polled often.
+    /// </summary>
     public static bool GameRunning()
     {
-        // checking every frame would cost more than it saves
-        if ((DateTime.UtcNow - _gameCheckAt).TotalSeconds < 5) return _gameRunning;
+        if ((DateTime.UtcNow - _gameCheckAt).TotalMilliseconds < 500) return _gameRunning;
         _gameCheckAt = DateTime.UtcNow;
 
-        try
+        foreach (var g in Games)
         {
-            var list = System.Diagnostics.Process.GetProcesses();
-            foreach (var p in list)
+            try
             {
-                try
+                var found = System.Diagnostics.Process.GetProcessesByName(g);
+                if (found.Length > 0)
                 {
-                    var name = p.ProcessName;
-                    foreach (var g in Games)
-                    {
-                        if (name.Equals(g, StringComparison.OrdinalIgnoreCase))
-                        {
-                            _gameRunning = true;
-                            return true;
-                        }
-                    }
+                    foreach (var p in found) p.Dispose();
+                    _gameRunning = true;
+                    return true;
                 }
-                catch { }
-                finally { p.Dispose(); }
             }
+            catch { }
         }
-        catch { }
 
         _gameRunning = false;
         return false;

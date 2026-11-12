@@ -35,7 +35,7 @@ internal sealed class D3DDesk : IDisposable
         _timer.Start();
 
         // a fullscreen game or video does not need a wallpaper burning the GPU behind it
-        _watch = new System.Windows.Forms.Timer { Interval = 2000 };
+        _watch = new System.Windows.Forms.Timer { Interval = 400 };   // a game must find the desktop already clear
         _watch.Tick += (_, _) => CheckFullscreen();
         _watch.Start();
 
@@ -54,7 +54,22 @@ internal sealed class D3DDesk : IDisposable
     {
         try
         {
-            bool busy = Native.ForegroundIsFullscreen() || Native.GameRunning();
+            bool game = Native.GameRunning();
+
+            // a game deserves a clean desktop: leave no process, no window, no device behind
+            if (game)
+            {
+                Log.Write("exit: a game is running");
+                _timer.Stop();
+                _watch.Stop();
+
+                // give the log a moment to flush, then end the whole app
+                Application.Exit();
+                Environment.Exit(0);
+                return;
+            }
+
+            bool busy = Native.ForegroundIsFullscreen();
 
             if (busy && !_pausedForFullscreen)
             {
