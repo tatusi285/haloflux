@@ -21,7 +21,7 @@ internal sealed class MusicPlayer : IDisposable
 
     public MusicPlayer(float volume = 0.45f)
     {
-        Volume = volume;
+        Volume = LoadVolume(volume);
 
         try
         {
@@ -80,6 +80,33 @@ internal sealed class MusicPlayer : IDisposable
             if (_tracks.Length == 0 || _index < 0) return "NO TRACKS";
             return Path.GetFileNameWithoutExtension(_tracks[_index]);
         }
+    }
+
+    /// <summary>Steps the volume and remembers it for the next run.</summary>
+    public void NudgeVolume(float delta)
+    {
+        Volume = Math.Clamp(Volume + delta, 0f, 1f);
+
+        try { if (_output != null) _output.Volume = Volume; } catch { }
+
+        try { File.WriteAllText(VolumeFile, ((int)Math.Round(Volume * 100)).ToString()); } catch { }
+
+        Log.Write("music: volume " + (int)Math.Round(Volume * 100) + "%");
+    }
+
+    private static string VolumeFile => Path.Combine(AppContext.BaseDirectory, "volume.txt");
+
+    private static float LoadVolume(float fallback)
+    {
+        try
+        {
+            if (!File.Exists(VolumeFile)) return fallback;
+            if (int.TryParse(File.ReadAllText(VolumeFile).Trim(), out var pct))
+                return Math.Clamp(pct / 100f, 0f, 1f);
+        }
+        catch { }
+
+        return fallback;
     }
 
     public void Start()

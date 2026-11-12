@@ -132,6 +132,24 @@ internal sealed class ScreensaverForm : Form
         _osdTimer.Start();
     }
 
+    private void ShowVolume()
+    {
+        if (_osd == null) return;
+
+        int pct = (int)Math.Round(_music.Volume * 100);
+        var bars = new string('\u2588', pct / 10) + new string('\u2591', 10 - pct / 10);
+
+        _osd.Text = "\U0001F50A  VOL  " + pct.ToString().PadLeft(3) + "%   " + bars;
+        _osd.Location = new Point((ClientSize.Width - _osd.PreferredWidth) / 2, ClientSize.Height - 120);
+        _osd.Visible = true;
+        _osd.BringToFront();
+
+        _osdTimer?.Stop();
+        _osdTimer = new System.Windows.Forms.Timer { Interval = 1600 };
+        _osdTimer.Tick += (_, _) => { _osd.Visible = false; _osdTimer?.Stop(); };
+        _osdTimer.Start();
+    }
+
     private bool ShouldExit()
     {
         var p = Cursor.Position;
@@ -144,10 +162,12 @@ internal sealed class ScreensaverForm : Form
         if (JustPressed(0x27)) { _music.Next(); ShowOsd(); return false; }         // right
         if (JustPressed(0x25)) { _music.Previous(); ShowOsd(); return false; }     // left
         if (JustPressed(0x4D)) { _music.CycleMode(); ShowOsd(); return false; }    // m
+        if (JustPressed(0x26)) { _music.NudgeVolume(+0.05f); ShowVolume(); return false; }   // up
+        if (JustPressed(0x28)) { _music.NudgeVolume(-0.05f); ShowVolume(); return false; }   // down
 
         for (int vk = 0x08; vk <= 0xFE; vk++)
         {
-            if (vk is 0x25 or 0x27 or 0x20 or 0x4D) continue;
+            if (vk is 0x25 or 0x27 or 0x20 or 0x4D or 0x26 or 0x28) continue;
             if (JustPressed(vk)) return true;
         }
 
