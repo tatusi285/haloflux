@@ -30,6 +30,7 @@ const HFX = (() => {
 
   // audio events: beat detection, shock waves, track changes, silence
   const beatHist = [];
+  const specPeaks = new Array(48).fill(0);
   let beatCool = 0;
   const shocks = [];
   let silenceFor = 0;
@@ -1245,7 +1246,7 @@ const HFX = (() => {
     const a0 = Math.PI * 0.22 + (hour / 11) * Math.PI * 0.56 - Math.PI / 22;
     ctx.beginPath();
     ctx.arc(g.cx, g.cy, R, a0, a0 + Math.PI / 11);
-    ctx.lineWidth = 2.4;
+    ctx.lineWidth = 3.0;
     ctx.strokeStyle = 'rgba(160,235,255,0.50)';
     ctx.stroke();
 
@@ -1356,6 +1357,7 @@ const HFX = (() => {
     drawBackground();
     drawNebula();
     drawAnnulus();
+    drawSpectrum();
     drawLensing();
     drawBeams(dt);
 
@@ -1485,6 +1487,89 @@ const HFX = (() => {
     ctx.textBaseline = 'alphabetic';
   }
 
+  /* ---------- radial spectrum: 48 bars around the outside of the ring ---------- */
+  function bandAt(i, n) {
+    // resample the 32 analysed bands onto n positions, log-ish so bass is not cramped
+    const pos = (i / n) * (audS.bands.length - 1);
+    const lo = Math.floor(pos);
+    const hi = Math.min(audS.bands.length - 1, lo + 1);
+    const f = pos - lo;
+    return (audS.bands[lo] || 0) * (1 - f) + (audS.bands[hi] || 0) * f;
+  }
+
+  function drawSpectrum() {
+    const g = geo();
+    const half = 24;                      // 24 per side, mirrored across the vertical axis
+    const r0 = g.ro * 1.03;
+    const maxLen = (g.ro - g.ri) * 0.26;
+
+    // read the bands once so they can be normalised against each other:
+    // a raw gain saturates and every bar ends up the same length
+    const raw = new Array(half);
+    let lo = Infinity, hi = -Infinity;
+
+    for (let i = 0; i < half; i++) {
+      const v = bandAt(Math.round(i * 1.2), half);
+      raw[i] = v;
+      if (v < lo) lo = v;
+      if (v > hi) hi = v;
+    }
+
+    const spread = Math.max(0.02, hi - lo);
+    const loudness = Math.min(1, audS.level * 2.2);
+
+    ctx.lineCap = 'round';
+
+    for (let i = 0; i < half; i++) {
+      const t01 = i / (half - 1);
+      const angle = -Math.PI / 2 + Math.PI * t01;
+
+      // relative shape inside the frame, scaled by how loud the moment is
+      let v = (raw[i] - lo) / spread;
+      v = Math.pow(v, 1.5) * (0.15 + 0.85 * loudness);
+
+      specPeaks[i] = Math.max(v, specPeaks[i] - 0.012);
+
+      const len = maxLen * v;
+      const peakLen = maxLen * specPeaks[i];
+
+      const r = Math.round(120 + 120 * t01);
+      const gg = Math.round(225 - 60 * t01);
+
+      for (const side of [-1, 1]) {
+        const a = side < 0 ? -Math.PI / 2 - (angle + Math.PI / 2) : angle;
+
+        if (len > 1.5) {
+          const x0 = g.cx + Math.cos(a) * r0;
+          const y0 = g.cy + Math.sin(a) * r0;
+          const x1 = g.cx + Math.cos(a) * (r0 + len);
+          const y1 = g.cy + Math.sin(a) * (r0 + len);
+
+          ctx.beginPath();
+          ctx.moveTo(x0, y0);
+          ctx.lineTo(x1, y1);
+          ctx.lineWidth = 2.8;
+          ctx.strokeStyle = `rgba(${r},${gg},255,${0.25 + v * 0.6})`;
+          ctx.stroke();
+        }
+
+        if (peakLen > 2) {
+          const px = g.cx + Math.cos(a) * (r0 + peakLen);
+          const py = g.cy + Math.sin(a) * (r0 + peakLen);
+          const tx = Math.cos(a + Math.PI / 2) * 2;
+          const ty = Math.sin(a + Math.PI / 2) * 2;
+
+          ctx.beginPath();
+          ctx.moveTo(px - tx, py - ty);
+          ctx.lineTo(px + tx, py + ty);
+          ctx.lineWidth = 1.8;
+          ctx.strokeStyle = `rgba(228,244,255,${0.30 + specPeaks[i] * 0.5})`;
+          ctx.stroke();
+        }
+      }
+    }
+  }
+
   /* ---------- audio events: beats, track changes, silence ---------- */
   function updateAudioEvents(dt) {
     // bass energy drives the beat: compare it with a rolling average, not a fixed level
@@ -1607,7 +1692,7 @@ const HFX = (() => {
       // track
       ctx.beginPath();
       ctx.arc(g.cx, g.cy, r, track0, track1);
-      ctx.lineWidth = 2.4;
+      ctx.lineWidth = 3.0;
       ctx.strokeStyle = 'rgba(150,190,220,0.10)';
       ctx.stroke();
 
@@ -1655,7 +1740,7 @@ const HFX = (() => {
     // track
     ctx.beginPath();
     ctx.arc(g.cx, g.cy, r, 0, Math.PI * 2);
-    ctx.lineWidth = 2.4;
+    ctx.lineWidth = 3.0;
     ctx.strokeStyle = 'rgba(150,190,220,0.10)';
     ctx.stroke();
 
