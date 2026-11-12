@@ -100,6 +100,28 @@ internal sealed class ScreensaverForm : Form
                     catch { }
                 };
                 _musicTick.Start();
+
+                if (Environment.GetEnvironmentVariable("HALOFLUX_FPS") == "1")
+                {
+                    var probe = new System.Windows.Forms.Timer { Interval = 5000 };
+                    long last = 0;
+                    probe.Tick += async (_, _) =>
+                    {
+                        try
+                        {
+                            var json = await _web.CoreWebView2.ExecuteScriptAsync("window.__hfFrames|0");
+                            if (long.TryParse(json, out var now))
+                            {
+                                if (last > 0)
+                                    Log.Write("canvas fps: " + ((now - last) / 5.0).ToString("0.0"));
+
+                                last = now;
+                            }
+                        }
+                        catch { }
+                    };
+                    probe.Start();
+                }
                 _ready = true;
             }
             catch (Exception ex)

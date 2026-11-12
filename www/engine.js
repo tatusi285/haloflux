@@ -600,7 +600,7 @@ const HFX = (() => {
       const gap = 0.22 + (i % 3) * 0.10;
 
       // a track change throws the bands out of phase, then they settle back
-      const kick = reassemble * reassembleDir * (i % 2 ? 1 : -1) * 0.16 * reassemble;
+      const kick = reassemble * reassembleDir * (i % 2 ? 1 : -1) * 0.12 * reassemble;
       const phase = rot * (bandSpeeds[i] || 1) + i * 0.7 + kick;
       const stepA = (Math.PI * 2) / segs;
       const half = stepA * (1 - gap) * 0.5;
@@ -1316,12 +1316,13 @@ const HFX = (() => {
 
   function frame(ts) {
     if (!running) return;
-    window.__hfFrames = (window.__hfFrames | 0) + 1;
 
-    if (ts - lastFrame < 30) {
+    if (ts - lastFrame < 16) {          // 60 fps ceiling: plenty, and half the CPU of uncapped
       rafId = requestAnimationFrame(frame);
       return;
     }
+
+    window.__hfFrames = (window.__hfFrames | 0) + 1;   // only counts frames we actually draw
 
     hitBoxes = [];
     const dt = Math.min(0.08, (ts - lastFrame) / 1000 || 0.033);
@@ -1498,7 +1499,8 @@ const HFX = (() => {
 
     beatCool = Math.max(0, beatCool - dt);
 
-    if (beatCool <= 0 && beatHist.length > 12 && bass > mean * 1.35 && bass > 0.16) {
+    if (beatCool <= 0 && beatHist.length > 12 && bass > mean * 1.35 && bass > 0.16
+        && reassemble < 0.2 && shocks.length < 3) {
       beatCool = 0.26;
       shocks.push({ life: 0 });
     }
@@ -1552,11 +1554,11 @@ const HFX = (() => {
     for (const s of shocks) {
       const e = 1 - Math.pow(1 - s.life, 2.2);          // ease out
       const r = g.ri * 0.55 + (g.ro - g.ri * 0.55) * e;
-      const a = (1 - s.life) * 0.30;
+      const a = (1 - s.life) * 0.22;
 
       ctx.beginPath();
       ctx.arc(g.cx, g.cy, r, 0, Math.PI * 2);
-      ctx.lineWidth = 1.6 + (1 - s.life) * 2.6;
+      ctx.lineWidth = 1.4 + (1 - s.life) * 2.0;
       ctx.strokeStyle = `rgba(190,232,255,${a})`;
       ctx.stroke();
     }
