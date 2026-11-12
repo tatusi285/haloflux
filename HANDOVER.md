@@ -256,3 +256,73 @@ def api(m, path, payload=None):
 3. **强度统一压着来**：新效果初始透明度 25–35%，看效果再提亮。
 4. **事件互斥**：切歌重组期间不触发冲击波；同时最多 3 道冲击波。
 5. **不要碰用户屏幕**：验证用 `--capture` 离屏渲染，不要 `CopyFromScreen`。
+
+---
+
+## 十三、更换背景视频的完整流程（2026-11-12 实践）
+
+### 素材来源
+
+B 站视频用 bilibili 客户端下载后存在 `C:\Users\LH\Videos\bilibili\<avid>\`，
+分两个 `.m4s`：`*-1-30080.m4s` 是画面，`*-1-30280.m4s` 是音频（不需要音频）。
+
+**坑**：bilibili 会在文件头塞 9 个 ASCII `0`（`30 30 30 ...`），ffmpeg 会直接报
+`Invalid data found`。要先剥掉前缀，让 `ftyp` 盒子落在文件开头：
+
+```python
+data = path.read_bytes()
+idx = data.find(b"ftyp")
+path.with_suffix(".clean.mp4").write_bytes(data[idx - 4:])   # 连盒子长度一起搬
+```
+
+### 只取最好看的一段
+
+整段视频常常是同一个镜头（这次的 3 分 42 秒构图完全没变），没必要全用。
+先出缩略图对照表选段：
+
+```powershell
+ffmpeg -i scene.mp4 -vf "fps=1/10,scale=480:-2" -q:v 4 thumbs\t_%03d.jpg
+```
+
+### 去水印
+
+B 站客户端下载的视频带 UP 主水印（这次的位于 x37..298, y36..97）。
+裁边会放大水印，正确做法是 `delogo`：
+
+```powershell
+ffmpeg -ss 145 -t 40 -i scene.mp4 -an -vf "delogo=x=26:y=24:w=288:h=86" `
+       -c:v libx264 -crf 18 -preset medium -pix_fmt yuv420p scene-clean.mp4
+```
+
+水印区域是深色渐变，delogo 插值后完全看不出。
+
+### 抽帧
+
+```powershell
+ffmpeg -i scene-clean.mp4 -vf "fps=15,scale=1920:-2" -q:v 5 frames\f_%04d.jpg
+```
+
+40 秒 → 600 帧 → 52 MB（原来 3 分 42 秒是 3330 帧、269 MB）。
+
+### 换完必须验证真的在动
+
+```powershell
+# 两次截屏，间隔约 1 秒，比较差异
+# 正常 ≥ 5%，接近 0 说明冻结
+```
+
+---
+
+## 十四、交叉淡化的代价（重要）
+
+`CrossFade: true` 时，每帧要把两张 1080p 混合，成本很高：
+
+| CrossFade | WallFps | 呈现帧率 | CPU（单核） | 说明 |
+|---|---|---|---|---|
+| false | — | 15 | **约 20%** | 原始顿挫感 |
+| true | 20 | 20 | 约 52% | 折中 |
+| true | 30 | 30 | 约 60% | 最顺滑 |
+
+改 `haloflux.json` 里的 `CrossFade` / `WallFps` 即可切换，不用重编译。
+
+**注意**：GDI+ 的整帧 alpha 混合就是这个量级，想再降只能换渲染后端（Direct2D 或 GPU 混合），不属于小改动。
