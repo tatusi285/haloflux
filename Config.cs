@@ -10,6 +10,9 @@ namespace HalofluxDesk;
 internal sealed class Config
 {
     public bool CrossFade { get; set; } = true;
+
+    /// <summary>Presentation rate while cross fading. 30 is smooth, 20 halves the cost.</summary>
+    public int WallFps { get; set; } = 30;
     public float Volume { get; set; } = 0.45f;
     public bool ShowDiagnostics { get; set; }
     public int Vignette { get; set; } = 60;

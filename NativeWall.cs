@@ -173,7 +173,9 @@ internal sealed class NativeWall : Form
         : -1;
 
     /// <summary>How often the wallpaper presents: double the footage rate while cross fading.</summary>
-    internal int WallFps => Config.Current.CrossFade ? FrameRate * 2 : FrameRate;
+    internal int WallFps => Config.Current.CrossFade
+        ? Math.Clamp(Config.Current.WallFps, 10, 60)
+        : FrameRate;
 
     internal void RenderFrame()
     {
@@ -656,6 +658,8 @@ internal sealed class NativeWall : Form
         int prev = (int)Math.Floor(pos) % _frames.Length;
         int next = (prev + 1) % _frames.Length;
         float mix = (float)(pos - Math.Floor(pos));
+
+        _wanted = next;   // without this the decoder never moves and the picture freezes
 
         var a = GetFrame(prev);
         var b = GetFrame(next);
