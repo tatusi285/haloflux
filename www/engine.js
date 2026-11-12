@@ -139,8 +139,8 @@ const HFX = (() => {
   const ARC = { a0: 0, a1: Math.PI * 2 };
 
   function geo() {
-    const ro = H * 0.52;
-    return { cx: W * 0.635, cy: H * 0.445, ro, ri: ro * 0.60 };
+    const ro = H * 0.415;
+    return { cx: W - ro * 0.998, cy: H * 0.485, ro, ri: ro * 0.60 };
   }
 
   function makeDust() {
@@ -581,6 +581,47 @@ const HFX = (() => {
     ctx.lineWidth = 0.8;
     ctx.strokeStyle = `rgba(180,215,250,${0.06 + load * 0.08})`;
     ctx.stroke();
+
+    /* 3b. instrument detail: hairline ticks every 1.5 degrees, tighter than the old marks */
+    ctx.beginPath();
+    for (let i = 0; i < 240; i++) {
+      const a = (i / 240) * Math.PI * 2;
+      const long = i % 10 === 0;
+      const r0 = g.ro * (long ? 0.985 : 0.992);
+      const p0 = pt(g.cx, g.cy, r0, a);
+      const p1 = pt(g.cx, g.cy, g.ro * 0.998, a);
+      ctx.moveTo(p0.x, p0.y);
+      ctx.lineTo(p1.x, p1.y);
+    }
+    ctx.lineWidth = 0.7;
+    ctx.strokeStyle = `rgba(170,215,255,${0.10 + load * 0.12})`;
+    ctx.stroke();
+
+    /* 3c. a dashed ring that creeps round: reads as a live instrument */
+    ctx.save();
+    ctx.setLineDash([2, 9]);
+    ctx.lineDashOffset = -t * 26;
+    ctx.beginPath();
+    ctx.arc(g.cx, g.cy, g.ro * 1.004, 0, Math.PI * 2);
+    ctx.lineWidth = 1.1;
+    ctx.strokeStyle = `rgba(196,232,255,${0.16 + load * 0.18})`;
+    ctx.stroke();
+    ctx.restore();
+
+    /* 3d. slight chromatic split on the rim: screens do this, plates do not */
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.beginPath();
+    ctx.arc(g.cx - 0.8, g.cy, g.ro * 0.998, 0, Math.PI * 2);
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(255,90,140,0.10)';
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(g.cx + 0.8, g.cy, g.ro * 0.998, 0, Math.PI * 2);
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(90,220,255,0.12)';
+    ctx.stroke();
+    ctx.restore();
 
     /* 4. rims */
     ctx.beginPath();
