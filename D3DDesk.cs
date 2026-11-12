@@ -54,7 +54,7 @@ internal sealed class D3DDesk : IDisposable
     {
         try
         {
-            bool busy = Native.ForegroundIsFullscreen();
+            bool busy = Native.ForegroundIsFullscreen() || Native.GameRunning();
 
             if (busy && !_pausedForFullscreen)
             {

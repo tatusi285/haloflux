@@ -172,6 +172,50 @@ internal static class Native
     [DllImport("user32.dll")]
     public static extern bool IsWindowVisible(IntPtr h);
 
+    private static readonly string[] Games =
+    {
+        "ZenlessZoneZero", "GenshinImpact", "YuanShen", "StarRail",
+        "osu", "VALORANT", "cs2", "javaw",
+    };
+
+    private static DateTime _gameCheckAt = DateTime.MinValue;
+    private static bool _gameRunning;
+
+    /// <summary>True when a game is running, whether or not it owns the screen yet.</summary>
+    public static bool GameRunning()
+    {
+        // checking every frame would cost more than it saves
+        if ((DateTime.UtcNow - _gameCheckAt).TotalSeconds < 5) return _gameRunning;
+        _gameCheckAt = DateTime.UtcNow;
+
+        try
+        {
+            var list = System.Diagnostics.Process.GetProcesses();
+            foreach (var p in list)
+            {
+                try
+                {
+                    var name = p.ProcessName;
+                    foreach (var g in Games)
+                    {
+                        if (name.Equals(g, StringComparison.OrdinalIgnoreCase))
+                        {
+                            _gameRunning = true;
+                            return true;
+                        }
+                    }
+                }
+                catch { }
+                finally { p.Dispose(); }
+            }
+        }
+        catch { }
+
+        _gameRunning = false;
+        return false;
+    }
+
+
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     public static extern int GetClassName(IntPtr hWnd, System.Text.StringBuilder name, int count);
 

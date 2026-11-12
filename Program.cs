@@ -53,10 +53,16 @@ internal static class Program
         }
 
         var sampler = new Sampler();
-        sampler.Start();
 
         var audio = new AudioProbe();
-        audio.Start();
+
+        // the wallpaper only paints footage: it needs neither telemetry nor a loopback
+        // capture, and holding the audio device open disturbs games
+        if (!wallOnly)
+        {
+            sampler.Start();
+            audio.Start();
+        }
 
         // the native wallpaper does not consume the web API, so skip the expensive
         // window thumbnailing and icon extraction entirely
