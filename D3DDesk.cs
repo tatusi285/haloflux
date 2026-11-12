@@ -15,6 +15,9 @@ internal sealed class D3DDesk : IDisposable
     private readonly NativeWall _renderer;
     private D3DWall? _wall;
     private readonly System.Windows.Forms.Timer _timer;
+    private readonly System.Windows.Forms.Timer _watch;
+    private int _lastFrameId = -2;
+    private bool _pausedForFullscreen;
 
     private double _renderMs, _blitMs;
     private int _frames;
@@ -31,6 +34,11 @@ internal sealed class D3DDesk : IDisposable
         _timer.Tick += (_, _) => Pump();
         _timer.Start();
 
+        // a fullscreen game or video does not need a wallpaper burning the GPU behind it
+        _watch = new System.Windows.Forms.Timer { Interval = 2000 };
+        _watch.Tick += (_, _) => CheckFullscreen();
+        _watch.Start();
+
         SystemEvents.PowerModeChanged += OnPower;
         SystemEvents.DisplaySettingsChanged += OnDisplay;
     }
@@ -42,10 +50,42 @@ internal sealed class D3DDesk : IDisposable
 
     private void OnDisplay(object? sender, EventArgs e) => Recover("display change");
 
+    private void CheckFullscreen()
+    {
+        try
+        {
+            bool busy = Native.ForegroundIsFullscreen();
+
+            if (busy && !_pausedForFullscreen)
+            {
+                _pausedForFullscreen = true;
+                _timer.Stop();
+                Log.Write("paused: a fullscreen app is in front");
+            }
+            else if (!busy && _pausedForFullscreen)
+            {
+                _pausedForFullscreen = false;
+                _lastFrameId = -2;
+                _timer.Start();
+                Log.Write("resumed: fullscreen app is gone");
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Write("fullscreen check: " + ex.Message);
+        }
+    }
+
     private void Pump()
     {
         try
         {
+            // the wallpaper only shows video: when the frame has not changed there is
+            // nothing to render, upload or present
+            int id = _renderer.FrameId;
+            if (id >= 0 && id == _lastFrameId) return;
+            _lastFrameId = id;
+
             if ((DateTime.UtcNow - _health).TotalSeconds > 3)
             {
                 _health = DateTime.UtcNow;
@@ -121,6 +161,8 @@ internal sealed class D3DDesk : IDisposable
 
         _timer.Stop();
         _timer.Dispose();
+        _watch.Stop();
+        _watch.Dispose();
         _wall?.Dispose();
     }
 }

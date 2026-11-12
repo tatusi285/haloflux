@@ -172,6 +172,37 @@ internal static class Native
     [DllImport("user32.dll")]
     public static extern bool IsWindowVisible(IntPtr h);
 
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    public static extern int GetClassName(IntPtr hWnd, System.Text.StringBuilder name, int count);
+
+    /// <summary>
+    /// True when the window in front covers the whole primary screen and belongs to an app,
+    /// so the wallpaper should stand down while a game or a fullscreen video is running.
+    /// </summary>
+    public static bool ForegroundIsFullscreen()
+    {
+        var h = GetForegroundWindow();
+        if (h == IntPtr.Zero || h == IntPtr.Zero) return false;
+
+        var sb = new System.Text.StringBuilder(256);
+        GetClassName(h, sb, 256);
+        var cls = sb.ToString();
+
+        // the desktop and the taskbar own the screen by definition
+        if (cls is "Progman" or "WorkerW" or "Shell_TrayWnd" or "Shell_SecondaryTrayWnd") return false;
+        if (!IsWindowVisible(h)) return false;
+
+        if (!GetWindowRect(h, out var r)) return false;
+
+        var s = System.Windows.Forms.Screen.FromHandle(h);
+        var b = s.Bounds;
+
+        // allow a few pixels of edge slop from borderless windows
+        return r.Left <= b.Left + 2 && r.Top <= b.Top + 2
+            && r.Right >= b.Right - 2 && r.Bottom >= b.Bottom - 2;
+    }
+
+
     [DllImport("user32.dll")]
     public static extern short GetAsyncKeyState(int vKey);
 

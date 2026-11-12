@@ -162,6 +162,11 @@ internal sealed class NativeWall : Form
 
     internal Bitmap? Frame => _frame;
 
+    /// <summary>Index of the video frame on screen, or -1 when the scene animates every frame.</summary>
+    internal int FrameId => _minimal && _frames.Length > 0
+        ? (int)(_clock.Elapsed.TotalSeconds * FrameRate) % _frames.Length
+        : -1;   // read the clock, not _t: _t only advances when we actually render
+
     internal void RenderFrame()
     {
         _t = _clock.Elapsed.TotalSeconds;
