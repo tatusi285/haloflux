@@ -31,6 +31,7 @@ const HFX = (() => {
   // audio events: beat detection, shock waves, track changes, silence
   const beatHist = [];
   const specPeaks = new Array(48).fill(0);
+  const sectorRoll = [];   // eased numeric value per sector
   let dustField = [];
   let beatPulse = 0;
   let beatAge = 99;
@@ -1834,6 +1835,24 @@ const HFX = (() => {
     ctx.fill();
   }
 
+  /* Numbers tick towards their target instead of jumping: the value reads as live. */
+  function rollValue(i, raw) {
+    const text = String(raw == null ? '' : raw);
+    const m = text.match(/-?\d+(?:\.(\d+))?/);
+    if (!m) return text;
+
+    const target = parseFloat(m[0]);
+    const decimals = m[1] ? m[1].length : 0;
+
+    while (sectorRoll.length <= i) sectorRoll.push(target);
+    const cur = sectorRoll[i];
+    const next = cur + (target - cur) * 0.14;
+    sectorRoll[i] = Math.abs(target - next) < Math.pow(10, -decimals) * 0.5 ? target : next;
+
+    const shown = sectorRoll[i].toFixed(decimals);
+    return text.replace(m[0], shown);
+  }
+
   function drawSectorPanels() {
     if (!sectorPanels.length) return;
     const g = geo();
@@ -1860,6 +1879,26 @@ const HFX = (() => {
       ctx.lineWidth = 1;
       ctx.stroke();
 
+      // a hot sector washes its own wedge in warning light, under the text
+      const heatPct = Math.max(0, Math.min(1,
+        ((p.row || {}).pct !== undefined ? p.row.pct : 0) / 100));
+      {
+        const hit = p.rows && p.rows.length
+          ? (p.rows.find(r => r && typeof r.pct === 'number') || {})
+          : {};
+        const hv = Math.max(0, Math.min(1, (hit.pct || 0) / 100));
+        if (hv > 0.85) {
+          const heat = Math.min(1, (hv - 0.85) / 0.15);
+          const breathe = 0.55 + 0.45 * Math.sin(t * 2.4 + i);
+          ctx.beginPath();
+          ctx.arc(g.cx, g.cy, g.ro, a0, a1);
+          ctx.arc(g.cx, g.cy, g.ri, a1, a0, true);
+          ctx.closePath();
+          ctx.fillStyle = `rgba(255,86,86,${(0.02 + 0.05 * heat) * (0.6 + 0.4 * breathe)})`;
+          ctx.fill();
+        }
+      }
+
       // title along the ring
       const title = String(p.title || '');
       const stepT = 0.058;
@@ -1869,19 +1908,20 @@ const HFX = (() => {
       const row = (p.rows || []).find(r => r && r.value && typeof r.pct === 'number')
                || (p.rows || []).find(r => r && r.value);
 
-      // the headline value
+      // the headline value, ticking towards its target
       if (row) {
-        drawTiltedText(row.value, g.cx, g.cy, (g.ri + g.ro) / 2 + span * 0.06, mid,
+        drawTiltedText(rollValue(i, row.value), g.cx, g.cy, (g.ri + g.ro) / 2 + span * 0.10, mid,
           'rgba(244,251,255,1.0)', 13, 'center', 10);
       }
 
       // ---- segment bar: eight cells that fill with the percentage ----
       const pct = Math.max(0, Math.min(1, (row && typeof row.pct === 'number' ? row.pct : 0) / 100));
+
       const cells = 6;
       const cellGap = 0.012;
       const usable = (a1 - a0) * 0.74;
       const cellSpan = usable / cells;
-      const barR = (g.ri + g.ro) / 2 - span * 0.21;
+      const barR = g.ri + 16;   // inner edge band: clear of the value text
       const barStart = mid - usable / 2;
 
       for (let c = 0; c < cells; c++) {
