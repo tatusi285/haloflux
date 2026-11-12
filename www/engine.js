@@ -1815,7 +1815,7 @@ const HFX = (() => {
 
     ctx.beginPath();
     ctx.arc(g.cx, g.cy, r, start, start + Math.PI * 2 * frac);
-    ctx.lineWidth = 3.2;
+    ctx.lineWidth = 4.2;
     ctx.strokeStyle = music.playing ? 'rgba(205,245,255,0.92)' : 'rgba(150,190,220,0.40)';
     ctx.stroke();
 
@@ -1841,6 +1841,7 @@ const HFX = (() => {
     const span = (Math.PI * 2) / n;
     const pad = 0.035;
     const drift = rot * 0.18;
+    const arcRoom = g.ro * Math.sin(span * 0.5) * 0.82;
 
     for (let i = 0; i < n; i++) {
       const p = sectorPanels[i];
@@ -1859,17 +1860,63 @@ const HFX = (() => {
       ctx.lineWidth = 1;
       ctx.stroke();
 
-      // one title along the ring, one level value: nothing else
+      // title along the ring
       const title = String(p.title || '');
       const stepT = 0.058;
-      const startT = mid - (Array.from(title).length * stepT) / 2;   // centre it on the sector
+      const startT = mid - (Array.from(title).length * stepT) / 2;
       drawArcText(title, g.cx, g.cy, g.ro - 16, startT, stepT, 'rgba(176,206,230,0.92)', 9, false);
 
-      const row = (p.rows || []).find(r => r && r.value);
+      const row = (p.rows || []).find(r => r && r.value && typeof r.pct === 'number')
+               || (p.rows || []).find(r => r && r.value);
+
+      // the headline value
       if (row) {
-        drawTiltedText(row.value, g.cx, g.cy, (g.ri + g.ro) / 2 - span * 0.05, mid,
+        drawTiltedText(row.value, g.cx, g.cy, (g.ri + g.ro) / 2 + span * 0.06, mid,
           'rgba(244,251,255,1.0)', 13, 'center', 10);
       }
+
+      // ---- segment bar: eight cells that fill with the percentage ----
+      const pct = Math.max(0, Math.min(1, (row && typeof row.pct === 'number' ? row.pct : 0) / 100));
+      const cells = 6;
+      const cellGap = 0.012;
+      const usable = (a1 - a0) * 0.74;
+      const cellSpan = usable / cells;
+      const barR = (g.ri + g.ro) / 2 - span * 0.21;
+      const barStart = mid - usable / 2;
+
+      for (let c = 0; c < cells; c++) {
+        const lit = (c + 1) / cells <= pct + 0.001;
+        const b0 = barStart + c * cellSpan + cellGap;
+        const b1 = barStart + (c + 1) * cellSpan - cellGap;
+
+        ctx.beginPath();
+        ctx.arc(g.cx, g.cy, barR, b0, b1);
+        ctx.lineWidth = 4.2;
+        if (lit) {
+          ctx.strokeStyle = pct > 0.9 ? 'rgba(255,120,120,0.95)'
+            : pct > 0.7 ? 'rgba(255,208,140,0.95)'
+              : 'rgba(150,225,255,0.92)';
+        } else {
+          ctx.strokeStyle = 'rgba(120,160,200,0.16)';
+        }
+        ctx.stroke();
+      }
+
+      // ---- status lamp beside the title: green normal, amber warm, red hot ----
+      const lampR = g.ro - 30;
+      const lamp = pt(g.cx, g.cy, lampR, mid - (a1 - a0) * 0.30);
+      const lampCol = pct > 0.9 ? '255,110,110' : pct > 0.7 ? '255,205,135' : '130,240,190';
+      const pulse = 0.55 + 0.45 * Math.sin(t * 3 + i);
+
+      ctx.beginPath();
+      ctx.arc(lamp.x, lamp.y, 3.4, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${lampCol},${0.35 + 0.35 * pulse})`;
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(lamp.x, lamp.y, 6.5, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${lampCol},0.10)`;
+      ctx.fill();
     }
   }
 
