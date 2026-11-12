@@ -1401,8 +1401,8 @@ const HFX = (() => {
 
     drawBackground();
     drawNebula();
-    drawAnnulus();
     drawSpectrum();
+    drawAnnulus();
     drawLensing();
     drawBeams(dt);
 
@@ -1544,21 +1544,23 @@ const HFX = (() => {
 
   function seedDust() {
     dustField = [];
-    for (let i = 0; i < 190; i++) {
-      const spread = Math.pow(Math.random(), 1.7);        // denser near the ring
+    for (let i = 0; i < 320; i++) {
       dustField.push({
-        a: Math.random() * Math.PI * 2,
-        r: 1.02 + spread * 0.42,                           // radius factor of ro
-        size: 1.0 + Math.random() * 1.9,
-        drift: (0.02 + Math.random() * 0.10) * (Math.random() < 0.5 ? -1 : 1),
+        x: Math.random(),                       // 0..1 across the frame
+        y: Math.random(),
+        depth: 0.35 + Math.random() * 0.65,     // near grains are bigger and brighter
+        size: 0.5 + Math.random() * 1.6,
+        rise: 0.004 + Math.random() * 0.010,
+        sway: 0.3 + Math.random() * 1.2,
         twinkle: 0.35 + Math.random() * 0.65,
         seed: Math.random() * Math.PI * 2,
-        push: 0,
       });
     }
   }
 
   let dustGlow = null;
+
+  /* one soft round sprite, reused for every grain: real falloff, one draw call each */
   function makeDustGlow() {
     const s = 64;
     const c = document.createElement('canvas');
@@ -1566,8 +1568,8 @@ const HFX = (() => {
     const g = c.getContext('2d');
     const grd = g.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
     grd.addColorStop(0.0, 'rgba(255,255,255,1)');
-    grd.addColorStop(0.25, 'rgba(220,240,255,0.75)');
-    grd.addColorStop(0.55, 'rgba(150,205,255,0.22)');
+    grd.addColorStop(0.25, 'rgba(220,240,255,0.72)');
+    grd.addColorStop(0.55, 'rgba(150,205,255,0.20)');
     grd.addColorStop(1.0, 'rgba(120,180,255,0)');
     g.fillStyle = grd;
     g.fillRect(0, 0, s, s);
@@ -1575,8 +1577,7 @@ const HFX = (() => {
   }
 
   function drawSpectrum() {
-    // Dust floating around the ring. Sound pushes it outward and lights it up, and every
-    // beat sends a brighter shell travelling through the cloud.
+    // A field of dust over the whole frame: the room has air in it, not just the ring.
     if (!dustField.length) seedDust();
     if (!dustGlow) makeDustGlow();
 
@@ -1584,11 +1585,9 @@ const HFX = (() => {
     const energy = Math.min(1, audS.level * 2.2);
     const treble = (audS.bands[26] + audS.bands[28] + audS.bands[30]) / 3;
 
-    const push = 1 + beatPulse * 0.075 + energy * 0.03;
-
-    // the shell expands outward at ~0.5 radius factors per second
-    const shell = beatAge * 0.55;
-    const shellWidth = 0.10;
+    // the beat shell expands from the ring across the entire screen
+    const shellPx = beatAge * 780;
+    const shellW = 150;
 
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
@@ -1596,36 +1595,28 @@ const HFX = (() => {
     for (let i = 0; i < dustField.length; i++) {
       const p = dustField[i];
 
-      p.a += p.drift * 0.01;
-      p.push = p.push * 0.985 + beatPulse * 0.010 * (0.4 + p.twinkle);
+      p.y -= p.rise * 0.01;
+      if (p.y < -0.05) { p.y = 1.05; p.x = Math.random(); }
 
-      const rf = p.r * (1 + p.push) * push;
-      const r = g.ro * rf;
-      const x = g.cx + Math.cos(p.a) * r;
-      const y = g.cy + Math.sin(p.a) * r * 0.985;
+      const x = p.x * W + Math.sin(t * 0.35 + p.seed) * p.sway * 3;
+      const y = p.y * H;
 
-      const tw = 0.55 + 0.45 * Math.sin(t * 1.7 + p.seed);
+      const dx = x - g.cx;
+      const dy = y - g.cy;
+      const dist = Math.sqrt(dx * dx + dy * dy);
 
-      // light from the beat shell passed this grain a moment ago
-      const d = Math.abs(rf - 1.0 - shell);
-      const wave = d < shellWidth ? (1 - d / shellWidth) * Math.exp(-beatAge * 1.1) : 0;
+      const d = Math.abs(dist - shellPx);
+      const wave = d < shellW ? (1 - d / shellW) * Math.exp(-beatAge * 1.2) : 0;
 
-      const near = 1.35 - (p.r - 1.0);
-      const a = (0.085 + 0.17 * energy + wave * 0.5) * p.twinkle * tw * near;
+      const tw = 0.55 + 0.45 * Math.sin(t * 1.6 + p.seed);
+      const a = (0.05 + 0.10 * energy + wave * 0.55) * p.twinkle * tw * p.depth;
 
-      if (a <= 0.015) continue;
+      if (a <= 0.008) continue;
 
-      const size = p.size * (1.9 + wave * 2.4 + beatPulse * 0.9);
+      const size = p.size * p.depth * (1.6 + wave * 2.6);
 
-      // coloured by pitch: cool white at the top end, lavender at the bottom
-      const tint = 0.75 + treble * 0.25;
-      ctx.globalAlpha = Math.min(0.92, a);
-      ctx.drawImage(dustGlow, x - size, y - size, size * 2, size * 2);
-      ctx.globalAlpha = Math.min(1, a * (0.6 + wave * 1.2));
-      ctx.fillStyle = `rgba(${Math.round(210 * tint + 40)},${Math.round(238 * tint)},255,1)`;
-      ctx.beginPath();
-      ctx.arc(x, y, p.size * (0.9 + wave * 0.8), 0, Math.PI * 2);
-      ctx.fill();
+      ctx.globalAlpha = Math.min(0.85, a * 1.8);
+      ctx.drawImage(dustGlow, x - size * 2, y - size * 2, size * 4, size * 4);
     }
 
     ctx.restore();
