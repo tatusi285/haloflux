@@ -1591,8 +1591,6 @@ const HFX = (() => {
   function drawSectorPanels() {
     if (!sectorPanels.length) return;
     const g = geo();
-    // widest a label may be before it reaches its neighbour
-    const arcRoom = g.ro * Math.sin((Math.PI * 2 / Math.max(1, sectorPanels.length)) * 0.5) * 0.82;
     const n = sectorPanels.length;
     const span = (Math.PI * 2) / n;
     const pad = 0.035;
@@ -1615,22 +1613,16 @@ const HFX = (() => {
       ctx.lineWidth = 1;
       ctx.stroke();
 
-      // title along the outer edge, tag at the other end
-      drawTiltedText(p.title || '', g.cx, g.cy, g.ro - 13, mid, 'rgba(186,214,238,1.0)', 10, 'center', 22, arcRoom);
-      if (p.tag) drawTiltedText(p.tag, g.cx, g.cy, g.ro - 26, mid, 'rgba(126,156,180,0.85)', 8, 'center', 22, arcRoom * 0.8);
+      // one title along the ring, one level value: nothing else
+      const title = String(p.title || '');
+      const stepT = 0.058;
+      const startT = mid - (Array.from(title).length * stepT) / 2;   // centre it on the sector
+      drawArcText(title, g.cx, g.cy, g.ro - 16, startT, stepT, 'rgba(176,206,230,0.92)', 9, false);
 
-      const rows = p.rows || [];
-      const rTop = g.ro - 36;
-      const rBottom = g.ri + 16;
-      const stepR = rows.length > 1 ? (rTop - rBottom) / (rows.length - 1) : 0;
-
-      for (let j = 0; j < rows.length; j++) {
-        const row = rows[j];
-        const rr = rTop - stepR * j;
-
-        drawTiltedText(row.label || '', g.cx, g.cy, rr, mid - 0.10, 'rgba(158,188,212,0.95)', 8, 'right', 26, arcRoom * 0.55);
-        drawTiltedText(row.value || '', g.cx, g.cy, rr, mid + 0.10, 'rgba(240,250,255,1.0)', 9, 'left', 26, arcRoom * 0.55);
-
+      const row = (p.rows || []).find(r => r && r.value);
+      if (row) {
+        drawTiltedText(row.value, g.cx, g.cy, (g.ri + g.ro) / 2 - span * 0.05, mid,
+          'rgba(244,251,255,1.0)', 13, 'center', 10);
       }
     }
   }
