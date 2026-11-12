@@ -274,13 +274,13 @@ const HFX = (() => {
     const bctx = bg.getContext('2d');
     const g0 = geo();
     const grd = bctx.createRadialGradient(g0.cx, g0.cy, 0, g0.cx, g0.cy, Math.max(W, H) * 0.8);
-    grd.addColorStop(0, 'rgba(20,36,54,0.13)');
-    grd.addColorStop(0.40, 'rgba(8,15,24,0.09)');
+    grd.addColorStop(0, 'rgba(20,36,54,0.07)');
+    grd.addColorStop(0.40, 'rgba(8,15,24,0.05)');
     grd.addColorStop(1, 'rgba(4,6,10,0)');
     bctx.fillStyle = grd;
     bctx.fillRect(0, 0, W, H);
     if (sprites.dust) {
-      bctx.globalAlpha = 0.35;
+      bctx.globalAlpha = 0.18;
       bctx.drawImage(sprites.dust, 0, 0);
       bctx.globalAlpha = 1;
     }
@@ -410,7 +410,7 @@ const HFX = (() => {
     ctx.save();
     ctx.translate(g.cx, g.cy);
     ctx.rotate(t * 0.010);
-    ctx.globalAlpha = Math.min(0.62, 0.42 * energy);
+    ctx.globalAlpha = Math.min(0.30, 0.15 * energy);
     ctx.drawImage(nebula, -S / 2, -S / 2, S, S);
     ctx.restore();
 
@@ -480,7 +480,9 @@ const HFX = (() => {
       }
 
       const fade = Math.max(0, 1 - Math.hypot(dx, dy) / limit);
-      const alpha = (m.hot ? 0.85 : 0.55) * fade;
+      // the left of the frame belongs to the footage: meteors thin out there
+      const leftFade = 0.12 + 0.88 * Math.min(1, Math.max(0, (m.x - W * 0.05) / (W * 0.55)));
+      const alpha = (m.hot ? 0.85 : 0.55) * fade * leftFade;
       const rgb = m.hot ? [255, 255, 255] : m.cls.rgb;
       const [r, gg, bb] = rgb;
 
@@ -1609,14 +1611,15 @@ const HFX = (() => {
       const wave = d < shellW ? (1 - d / shellW) * Math.exp(-beatAge * 1.2) : 0;
 
       const tw = 0.55 + 0.45 * Math.sin(t * 1.6 + p.seed);
-      const a = (0.05 + 0.10 * energy + wave * 0.55) * p.twinkle * tw * p.depth;
+      const leftFade = 0.55 + 0.45 * (x / W);            // keep her side clean
+      const a = (0.26 + 0.22 * energy + wave * 0.5) * p.twinkle * tw * p.depth * leftFade;
 
       if (a <= 0.008) continue;
 
-      const size = p.size * p.depth * (1.6 + wave * 2.6);
+      const size = p.size * p.depth * (0.9 + wave * 2.0);
 
-      ctx.globalAlpha = Math.min(0.85, a * 1.8);
-      ctx.drawImage(dustGlow, x - size * 2, y - size * 2, size * 4, size * 4);
+      ctx.globalAlpha = Math.min(0.8, a * 1.5);
+      ctx.drawImage(dustGlow, x - size * 3, y - size * 3, size * 6, size * 6);
     }
 
     ctx.restore();
