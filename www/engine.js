@@ -31,6 +31,8 @@ const HFX = (() => {
   // audio events: beat detection, shock waves, track changes, silence
   const beatHist = [];
   const specPeaks = new Array(48).fill(0);
+  let dustField = [];
+  let beatPulse = 0;
   let beatCool = 0;
   const shocks = [];
   let silenceFor = 0;
@@ -145,7 +147,7 @@ const HFX = (() => {
     c.width = W; c.height = H;
     const g = c.getContext('2d');
     g.lineCap = 'round';
-    for (let i = 0; i < 220; i++) {
+    for (let i = 0; i < 260; i++) {
       const x = Math.random() * W;
       const y = Math.random() * H;
       const len = 6 + Math.random() * Math.random() * 220;
@@ -224,6 +226,7 @@ const HFX = (() => {
     makeVignette();
     makePlates();
     if (!bandSpeeds.length) rollSpeeds();
+    if (!dustField.length) seedDust();
     buildNebula();
     seedMeteors();
     seedSparks();
@@ -1497,58 +1500,65 @@ const HFX = (() => {
     return (audS.bands[lo] || 0) * (1 - f) + (audS.bands[hi] || 0) * f;
   }
 
+  function seedDust() {
+    dustField = [];
+    for (let i = 0; i < 260; i++) {
+      const spread = Math.pow(Math.random(), 1.7);        // denser near the ring
+      dustField.push({
+        a: Math.random() * Math.PI * 2,
+        r: 1.02 + spread * 0.42,                           // radius factor of ro
+        size: 1.0 + Math.random() * 1.9,
+        drift: (0.02 + Math.random() * 0.10) * (Math.random() < 0.5 ? -1 : 1),
+        twinkle: 0.35 + Math.random() * 0.65,
+        seed: Math.random() * Math.PI * 2,
+        push: 0,
+      });
+    }
+  }
+
   function drawSpectrum() {
+    // A cloud of dust around the ring. Nothing draws a bar: the sound pushes the
+    // particles outward and makes them shimmer, which reads as air being moved.
+    if (!dustField.length) seedDust();
+
     const g = geo();
-    const pts = 120;
-    const rBase = g.ro * 1.015;
-    const amp = (g.ro - g.ri) * 0.32;
+    const energy = Math.min(1, audS.level * 2.2);
+    const bass = (audS.bands[0] + audS.bands[1] + audS.bands[2]) / 3;
+    const treble = (audS.bands[26] + audS.bands[28] + audS.bands[30]) / 3;
 
-    // sample the bands around the circle, then smooth them so the outline undulates
-    // instead of spiking: radial spikes read as a sea urchin, a soft curve reads as liquid
-    const raw = new Array(pts);
-    for (let i = 0; i < pts; i++) {
-      const around = i / pts;                       // 0..1 all the way round
-      const mirror = around <= 0.5 ? around * 2 : (1 - around) * 2;   // symmetric left/right
-      raw[i] = bandAt(Math.round(mirror * 30), 32);
+    const push = 1 + beatPulse * 0.075 + bass * 0.06 + energy * 0.03;
+
+    for (let i = 0; i < dustField.length; i++) {
+      const p = dustField[i];
+
+      p.a += p.drift * 0.01;
+
+      // the beat shoves the grain outward, then it drifts back
+      p.push = p.push * 0.985 + beatPulse * 0.010 * (0.4 + p.twinkle);
+
+      const r = g.ro * p.r * (1 + p.push) * push;
+      const x = g.cx + Math.cos(p.a) * r;
+      const y = g.cy + Math.sin(p.a) * r * 0.985;
+
+      const tw = 0.55 + 0.45 * Math.sin(t * 1.7 + p.seed);
+      const near = 1.35 - (p.r - 1.0);            // grains close to the ring are brighter
+      const a = (0.26 + 0.40 * energy + beatPulse * 0.45) * p.twinkle * tw * near;
+
+      if (a <= 0.02) continue;
+
+      const warm = beatPulse * 0.6;
+      const size = p.size * (1 + beatPulse * 0.6);
+
+      ctx.beginPath();
+      ctx.arc(x, y, size * 2.6, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(170,215,255,${a * 0.16})`;
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(x, y, size, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${Math.round(210 + warm * 40)},${Math.round(236 + treble * 18)},255,${Math.min(1, a * 1.6)})`;
+      ctx.fill();
     }
-
-    const smooth = new Array(pts);
-    const wide = 6;
-    for (let i = 0; i < pts; i++) {
-      let sum = 0, wsum = 0;
-      for (let k = -wide; k <= wide; k++) {
-        const w = 1 - Math.abs(k) / (wide + 1);
-        sum += raw[(i + k + pts) % pts] * w;
-        wsum += w;
-      }
-      smooth[i] = sum / wsum;
-    }
-
-    let hi = 0.001;
-    for (let i = 0; i < pts; i++) hi = Math.max(hi, smooth[i]);
-
-    const loudness = Math.min(1, audS.level * 2.4);
-
-    ctx.beginPath();
-    for (let i = 0; i <= pts; i++) {
-      const idx = i % pts;
-      const a = -Math.PI / 2 + (idx / pts) * Math.PI * 2;
-      const v = Math.pow(smooth[idx] / hi, 1.25) * loudness;
-      const r = rBase + amp * v;
-      const x = g.cx + Math.cos(a) * r;
-      const y = g.cy + Math.sin(a) * r;
-      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-    }
-    ctx.closePath();
-
-    ctx.lineWidth = 2.2;
-    ctx.strokeStyle = `rgba(188,230,255,${0.30 + loudness * 0.45})`;
-    ctx.stroke();
-
-    // a wider, dimmer copy gives it a soft halo without costing much
-    ctx.lineWidth = 7;
-    ctx.strokeStyle = `rgba(140,200,255,${0.035 + loudness * 0.05})`;
-    ctx.stroke();
   }
 
   /* ---------- audio events: beats, track changes, silence ---------- */
@@ -1569,12 +1579,15 @@ const HFX = (() => {
         && reassemble < 0.2 && shocks.length < 3) {
       beatCool = 0.26;
       shocks.push({ life: 0 });
+      beatPulse = 1;
     }
 
     for (let i = shocks.length - 1; i >= 0; i--) {
       shocks[i].life += dt / 1.25;
       if (shocks[i].life >= 1) shocks.splice(i, 1);
     }
+
+    beatPulse = Math.max(0, beatPulse - dt * 1.6);
 
     // silence -> standby
     if (audS.level < 0.02) silenceFor += dt; else silenceFor = 0;
