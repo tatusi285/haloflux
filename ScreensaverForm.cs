@@ -88,11 +88,13 @@ internal sealed class ScreensaverForm : Form
                 {
                     try
                     {
+                        var name = _music.Current.Replace("\\", "\\\\").Replace("\"", "\\\"");
                         var payload = "{\"type\":\"music\",\"pos\":" +
                                       _music.PositionSeconds.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) +
                                       ",\"dur\":" +
                                       _music.DurationSeconds.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) +
-                                      ",\"playing\":" + (_music.Playing ? "true" : "false") + "}";
+                                      ",\"playing\":" + (_music.Playing ? "true" : "false") +
+                                      ",\"name\":\"" + name + "\"}";
                         _web.CoreWebView2?.PostWebMessageAsJson(payload);
                     }
                     catch { }

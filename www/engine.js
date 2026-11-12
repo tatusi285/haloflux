@@ -26,7 +26,16 @@ const HFX = (() => {
   let rotBoost = 0;
 
   // music progress, interpolated between host updates so it never stutters
-  const music = { pos: 0, dur: 0, playing: false, stamp: 0 };
+  const music = { pos: 0, dur: 0, playing: false, stamp: 0, name: '' };
+
+  // audio events: beat detection, shock waves, track changes, silence
+  const beatHist = [];
+  let beatCool = 0;
+  const shocks = [];
+  let silenceFor = 0;
+  let standby = 0;
+  let reassemble = 0;
+  let reassembleDir = 1;
   const audS = { level: 0, bands: new Array(32).fill(0) };
   let sparks = [];
   let specks = [];
@@ -222,7 +231,12 @@ const HFX = (() => {
 
   /* ---------------- stats ---------------- */
 
-  function setMusic(pos, dur, playing) {
+  function setMusic(pos, dur, playing, name) {
+    if (name && name !== music.name) {
+      music.name = name;
+      if (music.name) trackChanged(name);
+    }
+
     music.pos = pos || 0;
     music.dur = dur || 0;
     music.playing = !!playing;
@@ -584,12 +598,15 @@ const HFX = (() => {
 
       const segs = 18 + i * 4;
       const gap = 0.22 + (i % 3) * 0.10;
-      const phase = rot * (bandSpeeds[i] || 1) + i * 0.7;
+
+      // a track change throws the bands out of phase, then they settle back
+      const kick = reassemble * reassembleDir * (i % 2 ? 1 : -1) * 0.16 * reassemble;
+      const phase = rot * (bandSpeeds[i] || 1) + i * 0.7 + kick;
       const stepA = (Math.PI * 2) / segs;
       const half = stepA * (1 - gap) * 0.5;
 
       ctx.lineWidth = width;
-      ctx.strokeStyle = `rgba(184,220,255,${b.a * (2.4 + load * 1.6)})`;
+      ctx.strokeStyle = `rgba(184,220,255,${b.a * (2.4 + load * 1.6) * (1 - standby * 0.78)})`;
       for (let s = 0; s < segs; s++) {
         const a0 = s * stepA + phase - half;
         ctx.beginPath();
@@ -1326,6 +1343,8 @@ const HFX = (() => {
     const cpuLoad = Math.min(1, sm.cpu / 100);
     rotBoost += (cpuLoad - rotBoost) * Math.min(1, dt * 1.1);
     rot += dt * (0.012 + rotBoost * 0.24);
+
+    updateAudioEvents(dt);
     if (pulseT > 0) pulseT = Math.max(0, pulseT - dt * 0.75);
 
     audS.level += (aud.level - audS.level) * Math.min(1, dt * 9);
@@ -1344,6 +1363,8 @@ const HFX = (() => {
     drawMeteors(dt);
     drawDetail();
     drawStatusSegments();
+    drawStandbySweep();
+    drawShocks();
     drawSectorPanels();
     drawArcMeters();
     drawMusicArc();
@@ -1461,6 +1482,84 @@ const HFX = (() => {
     }
     ctx.textAlign = 'left';
     ctx.textBaseline = 'alphabetic';
+  }
+
+  /* ---------- audio events: beats, track changes, silence ---------- */
+  function updateAudioEvents(dt) {
+    // bass energy drives the beat: compare it with a rolling average, not a fixed level
+    const bass = (audS.bands[0] + audS.bands[1] + audS.bands[2] + audS.bands[3]) / 4;
+
+    beatHist.push(bass);
+    if (beatHist.length > 90) beatHist.shift();
+
+    let mean = 0;
+    for (let i = 0; i < beatHist.length; i++) mean += beatHist[i];
+    mean /= Math.max(1, beatHist.length);
+
+    beatCool = Math.max(0, beatCool - dt);
+
+    if (beatCool <= 0 && beatHist.length > 12 && bass > mean * 1.35 && bass > 0.16) {
+      beatCool = 0.26;
+      shocks.push({ life: 0 });
+    }
+
+    for (let i = shocks.length - 1; i >= 0; i--) {
+      shocks[i].life += dt / 1.25;
+      if (shocks[i].life >= 1) shocks.splice(i, 1);
+    }
+
+    // silence -> standby
+    if (audS.level < 0.02) silenceFor += dt; else silenceFor = 0;
+    standby += ((silenceFor > 8 ? 1 : 0) - standby) * Math.min(1, dt * 0.7);
+
+    // track change -> the ring shakes itself apart and settles again
+    if (reassemble > 0) reassemble = Math.max(0, reassemble - dt / 0.85);
+  }
+
+  function trackChanged(name) {
+    reassemble = 1;
+    reassembleDir = -reassembleDir;
+    Log_line('track: ' + name);
+  }
+
+  function Log_line(s) { try { console.log(s); } catch { } }
+
+  function drawStandbySweep() {
+    if (standby < 0.02) return;
+
+    const g = geo();
+    const a = (t * 0.55) % (Math.PI * 2);
+    const span = 0.9;
+
+    ctx.save();
+    ctx.globalAlpha = standby;
+
+    for (let k = 0; k < 3; k++) {
+      ctx.beginPath();
+      ctx.arc(g.cx, g.cy, g.ri + (g.ro - g.ri) * (0.25 + k * 0.25), a - span / 2, a + span / 2);
+      ctx.lineWidth = (g.ro - g.ri) * 0.22;
+      ctx.strokeStyle = `rgba(170,225,255,${0.10 - k * 0.025})`;
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  function drawShocks() {
+    if (!shocks.length) return;
+
+    const g = geo();
+    for (const s of shocks) {
+      const e = 1 - Math.pow(1 - s.life, 2.2);          // ease out
+      const r = g.ri * 0.55 + (g.ro - g.ri * 0.55) * e;
+      const a = (1 - s.life) * 0.30;
+
+      ctx.beginPath();
+      ctx.arc(g.cx, g.cy, r, 0, Math.PI * 2);
+      ctx.lineWidth = 1.6 + (1 - s.life) * 2.6;
+      ctx.strokeStyle = `rgba(190,232,255,${a})`;
+      ctx.stroke();
+    }
   }
 
   /* ---------- data arcs: one per sector, along its inner edge ---------- */
