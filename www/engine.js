@@ -1394,6 +1394,49 @@ const HFX = (() => {
     if (Array.isArray(list)) sectorPanels = list.slice(0, 8);
   }
 
+  /* Labels that sit on the ring but stay readable: the glyphs follow the tangent only
+     up to 35 degrees, and the value text is always level. */
+  function drawTiltedText(text, cx, cy, r, angle, color, size, align, maxTilt, maxWidth) {
+    const s = String(text == null ? '' : text);
+    if (!s) return;
+
+    const x = cx + Math.cos(angle) * r;
+    const y = cy + Math.sin(angle) * r;
+
+    // tangent direction, folded into +-maxTilt and flipped so it is never upside down
+    let tilt = angle + Math.PI / 2;
+    while (tilt > Math.PI) tilt -= Math.PI * 2;
+    while (tilt < -Math.PI) tilt += Math.PI * 2;
+    if (tilt > Math.PI / 2) tilt -= Math.PI;
+    if (tilt < -Math.PI / 2) tilt += Math.PI;
+
+    const limit = (maxTilt == null ? 35 : maxTilt) * Math.PI / 180;
+    if (tilt > limit) tilt = limit;
+    if (tilt < -limit) tilt = -limit;
+
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(tilt);
+    ctx.textAlign = align || 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = color;
+
+    let px = size;
+    const fit = maxWidth || 0;
+    if (fit > 0) {
+      // long words such as TEMPERATURE must not run into the neighbouring label
+      for (let guard = 0; guard < 8; guard++) {
+        ctx.font = px + 'px "Cascadia Mono", Consolas, monospace';
+        if (ctx.measureText(s).width <= fit || px <= 5) break;
+        px -= 0.6;
+      }
+    }
+
+    ctx.font = px + 'px "Cascadia Mono", Consolas, monospace';
+    ctx.fillText(s, 0, 0);
+    ctx.restore();
+  }
+
   function drawArcText(text, cx, cy, r, aStart, step, color, size, alignRight) {
     const chars = Array.from(String(text == null ? '' : text));
     if (!chars.length) return;
@@ -1548,6 +1591,8 @@ const HFX = (() => {
   function drawSectorPanels() {
     if (!sectorPanels.length) return;
     const g = geo();
+    // widest a label may be before it reaches its neighbour
+    const arcRoom = g.ro * Math.sin((Math.PI * 2 / Math.max(1, sectorPanels.length)) * 0.5) * 0.82;
     const n = sectorPanels.length;
     const span = (Math.PI * 2) / n;
     const pad = 0.035;
@@ -1571,15 +1616,8 @@ const HFX = (() => {
       ctx.stroke();
 
       // title along the outer edge, tag at the other end
-      drawArcText(p.title || '', g.cx, g.cy, g.ro - 11, a0 + 0.07, 0.056, 'rgba(176,206,230,1.0)', 10, false);
-      if (p.tag) drawArcText(p.tag, g.cx, g.cy, g.ro - 11, a1 - 0.07, 0.046, 'rgba(126,156,180,0.8)', 8, true);
-
-      // divider
-      ctx.beginPath();
-      ctx.arc(g.cx, g.cy, g.ro - 20, a0 + 0.05, a1 - 0.05);
-      ctx.strokeStyle = 'rgba(255,255,255,0.07)';
-      ctx.lineWidth = 1;
-      ctx.stroke();
+      drawTiltedText(p.title || '', g.cx, g.cy, g.ro - 13, mid, 'rgba(186,214,238,1.0)', 10, 'center', 22, arcRoom);
+      if (p.tag) drawTiltedText(p.tag, g.cx, g.cy, g.ro - 26, mid, 'rgba(126,156,180,0.85)', 8, 'center', 22, arcRoom * 0.8);
 
       const rows = p.rows || [];
       const rTop = g.ro - 36;
@@ -1590,8 +1628,8 @@ const HFX = (() => {
         const row = rows[j];
         const rr = rTop - stepR * j;
 
-        drawArcText(row.label || '', g.cx, g.cy, rr, a0 + 0.10, 0.050, 'rgba(158,188,212,0.95)', 8, false);
-        drawArcText(row.value || '', g.cx, g.cy, rr, a1 - 0.10, 0.052, 'rgba(240,250,255,1.0)', 9, true);
+        drawTiltedText(row.label || '', g.cx, g.cy, rr, mid - 0.10, 'rgba(158,188,212,0.95)', 8, 'right', 26, arcRoom * 0.55);
+        drawTiltedText(row.value || '', g.cx, g.cy, rr, mid + 0.10, 'rgba(240,250,255,1.0)', 9, 'left', 26, arcRoom * 0.55);
 
       }
     }
