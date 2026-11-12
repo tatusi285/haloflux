@@ -148,7 +148,7 @@ const HFX = (() => {
     c.width = W; c.height = H;
     const g = c.getContext('2d');
     g.lineCap = 'round';
-    for (let i = 0; i < 260; i++) {
+    for (let i = 0; i < 190; i++) {
       const x = Math.random() * W;
       const y = Math.random() * H;
       const len = 6 + Math.random() * Math.random() * 220;
@@ -274,8 +274,8 @@ const HFX = (() => {
     const bctx = bg.getContext('2d');
     const g0 = geo();
     const grd = bctx.createRadialGradient(g0.cx, g0.cy, 0, g0.cx, g0.cy, Math.max(W, H) * 0.8);
-    grd.addColorStop(0, 'rgba(26,46,68,0.26)');
-    grd.addColorStop(0.40, 'rgba(10,19,30,0.20)');
+    grd.addColorStop(0, 'rgba(20,36,54,0.13)');
+    grd.addColorStop(0.40, 'rgba(8,15,24,0.09)');
     grd.addColorStop(1, 'rgba(4,6,10,0)');
     bctx.fillStyle = grd;
     bctx.fillRect(0, 0, W, H);
@@ -410,7 +410,7 @@ const HFX = (() => {
     ctx.save();
     ctx.translate(g.cx, g.cy);
     ctx.rotate(t * 0.010);
-    ctx.globalAlpha = Math.min(0.95, 0.78 * energy);
+    ctx.globalAlpha = Math.min(0.62, 0.42 * energy);
     ctx.drawImage(nebula, -S / 2, -S / 2, S, S);
     ctx.restore();
 
@@ -927,7 +927,7 @@ const HFX = (() => {
 
   function drawVignette() {
     if (!sprites.vignette) return;
-    ctx.globalAlpha = 0.95;
+    ctx.globalAlpha = 0.54;
     ctx.drawImage(sprites.vignette, 0, 0);
     ctx.globalAlpha = 1;
   }
@@ -1503,7 +1503,7 @@ const HFX = (() => {
 
   function seedDust() {
     dustField = [];
-    for (let i = 0; i < 260; i++) {
+    for (let i = 0; i < 190; i++) {
       const spread = Math.pow(Math.random(), 1.7);        // denser near the ring
       dustField.push({
         a: Math.random() * Math.PI * 2,
@@ -1570,11 +1570,11 @@ const HFX = (() => {
       const wave = d < shellWidth ? (1 - d / shellWidth) * Math.exp(-beatAge * 1.1) : 0;
 
       const near = 1.35 - (p.r - 1.0);
-      const a = (0.16 + 0.30 * energy + wave * 0.85) * p.twinkle * tw * near;
+      const a = (0.085 + 0.17 * energy + wave * 0.5) * p.twinkle * tw * near;
 
       if (a <= 0.015) continue;
 
-      const size = p.size * (2.4 + wave * 3.2 + beatPulse * 1.2);
+      const size = p.size * (1.9 + wave * 2.4 + beatPulse * 0.9);
 
       // coloured by pitch: cool white at the top end, lavender at the bottom
       const tint = 0.75 + treble * 0.25;
