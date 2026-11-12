@@ -17,6 +17,9 @@ internal sealed class Config
     public bool ShowDiagnostics { get; set; }
     public int Vignette { get; set; } = 60;
 
+    /// <summary>Below this frame-to-frame difference the blend is skipped to save CPU.</summary>
+    public int MotionThreshold { get; set; } = 8;
+
     private static readonly string Path_ =
         System.IO.Path.Combine(AppContext.BaseDirectory, "haloflux.json");
 

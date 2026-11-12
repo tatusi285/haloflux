@@ -30,6 +30,7 @@ internal sealed class NativeWall : Form
     private Bitmap?[] _pool = Array.Empty<Bitmap?>();
     private int[] _slotFrame = Array.Empty<int>();
     private bool[] _slotReady = Array.Empty<bool>();
+    private byte[][] _sig = Array.Empty<byte[]>();   // 8x8 luminance fingerprint per slot
     private string[] _frames = Array.Empty<string>();
     private readonly Dictionary<int, Bitmap> _frameCache = new();
     private const int FrameRate = 15;
@@ -346,6 +347,7 @@ internal sealed class NativeWall : Form
         _pool = new Bitmap?[slots];
         _slotFrame = new int[slots];
         _slotReady = new bool[slots];
+        _sig = new byte[slots][];
 
         for (int i = 0; i < slots; i++) _slotFrame[i] = -1;
 
@@ -381,6 +383,8 @@ internal sealed class NativeWall : Form
                             g.DrawImage(src, 0, 0, W, H);
                         }
 
+                        _sig[slot] = Signature(bmp);
+
                         lock (_ready)
                         {
                             _slotFrame[slot] = idx;
@@ -397,6 +401,53 @@ internal sealed class NativeWall : Form
 
         _decoder.Start();
         Log.Write("native: decoder started with " + slots + " reusable slots");
+    }
+
+    /// <summary>Coarse 8x8 luminance grid, used to tell a moving shot from a still one.</summary>
+    private static byte[] Signature(Bitmap bmp)
+    {
+        var sig = new byte[64];
+        int cw = Math.Max(1, bmp.Width / 8);
+        int ch = Math.Max(1, bmp.Height / 8);
+        int stepX = Math.Max(1, cw / 3);
+        int stepY = Math.Max(1, ch / 3);
+
+        for (int cy = 0; cy < 8; cy++)
+        {
+            for (int cx = 0; cx < 8; cx++)
+            {
+                long sum = 0;
+                int n = 0;
+
+                for (int y = cy * ch; y < (cy + 1) * ch; y += stepY)
+                {
+                    for (int x = cx * cw; x < (cx + 1) * cw; x += stepX)
+                    {
+                        var c = bmp.GetPixel(x, y);
+                        sum += (c.R * 77 + c.G * 151 + c.B * 28) >> 8;
+                        n++;
+                    }
+                }
+
+                sig[cy * 8 + cx] = (byte)(n == 0 ? 0 : sum / n);
+            }
+        }
+
+        return sig;
+    }
+
+    private static int SigDistance(byte[]? a, byte[]? b)
+    {
+        if (a == null || b == null) return 255;
+
+        int worst = 0;
+        for (int i = 0; i < a.Length; i++)
+        {
+            int d = Math.Abs(a[i] - b[i]);
+            if (d > worst) worst = d;
+        }
+
+        return worst;
     }
 
     /// <summary>Finds a free slot, or steals the one furthest from the playhead.</summary>
@@ -675,7 +726,9 @@ internal sealed class NativeWall : Form
 
         g.DrawImageUnscaled(a!, 0, 0);
 
-        if (Config.Current.CrossFade && mix > 0.02f && !ReferenceEquals(a, b))
+        bool moving = !ReferenceEquals(a, b) && SigDistance(SigFor(a), SigFor(b)) >= Config.Current.MotionThreshold;
+
+        if (Config.Current.CrossFade && moving && mix > 0.02f)
         {
             _alpha?.Dispose();
             _alpha = new ImageAttributes();
@@ -683,6 +736,14 @@ internal sealed class NativeWall : Form
             _alpha.SetColorMatrix(cm, ColorMatrixFlag.Default, ColorAdjustType.Bitmap);
             g.DrawImage(b!, new Rectangle(0, 0, W, H), 0, 0, W, H, GraphicsUnit.Pixel, _alpha);
         }
+    }
+
+    private byte[]? SigFor(Bitmap bmp)
+    {
+        for (int i = 0; i < _slotReady.Length; i++)
+            if (_slotReady[i] && ReferenceEquals(_pool[i], bmp)) return _sig[i];
+
+        return null;
     }
 
     /// <summary>Frame by absolute index, or the closest decoded neighbour.</summary>
